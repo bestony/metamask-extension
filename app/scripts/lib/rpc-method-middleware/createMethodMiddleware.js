@@ -1,3 +1,5 @@
+import { ethErrors } from 'eth-rpc-errors';
+import { UNSUPPORTED_RPC_METHODS } from '../../../../shared/constants/network';
 import handlers from './handlers';
 
 const handlerMap = handlers.reduce((map, handler) => {
@@ -25,6 +27,11 @@ const handlerMap = handlers.reduce((map, handler) => {
  */
 export default function createMethodMiddleware(opts) {
   return function methodMiddleware(req, res, next, end) {
+    // Reject unsupported methods.
+    if (UNSUPPORTED_RPC_METHODS.has(req.method)) {
+      return end(ethErrors.rpc.methodNotSupported());
+    }
+
     const handler = handlerMap.get(req.method);
     if (handler) {
       const { implementation, hookNames } = handler;
