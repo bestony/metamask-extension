@@ -1,82 +1,15 @@
-import { MethodRegistry } from 'eth-method-registry';
-import log from 'loglevel';
+import { ERC1155, ERC721 } from '@metamask/controller-utils';
 
-import { addHexPrefix } from '../../../app/scripts/lib/util';
 import {
-  TRANSACTION_TYPES,
-  TRANSACTION_GROUP_STATUSES,
-  TRANSACTION_STATUSES,
-  TRANSACTION_ENVELOPE_TYPES,
-} from '../../../shared/constants/transaction';
-import { addCurrencies } from '../../../shared/modules/conversion.utils';
+  TransactionEnvelopeType,
+  TransactionStatus,
+  TransactionType,
+} from '@metamask/transaction-controller';
+// TODO: Remove restricted import
+// eslint-disable-next-line import/no-restricted-paths
+import { addHexPrefix } from '../../../app/scripts/lib/util';
+import { TransactionGroupStatus } from '../../../shared/constants/transaction';
 import { readAddressAsContract } from '../../../shared/modules/contract-utils';
-import fetchWithCache from './fetch-with-cache';
-
-/**
- * @typedef EthersContractCall
- * @type object
- * @property {any[]} args - The args/params to the function call.
- * An array-like object with numerical and string indices.
- * @property {string} name - The name of the function.
- * @property {string} signature - The function signature.
- * @property {string} sighash - The function signature hash.
- * @property {EthersBigNumber} value - The ETH value associated with the call.
- * @property {FunctionFragment} functionFragment - The Ethers function fragment
- * representation of the function.
- */
-
-async function getMethodFrom4Byte(fourBytePrefix) {
-  const fourByteResponse = await fetchWithCache(
-    `https://www.4byte.directory/api/v1/signatures/?hex_signature=${fourBytePrefix}`,
-    {
-      referrerPolicy: 'no-referrer-when-downgrade',
-      body: null,
-      method: 'GET',
-      mode: 'cors',
-    },
-  );
-  fourByteResponse.results.sort((a, b) => {
-    return new Date(a.created_at).getTime() < new Date(b.created_at).getTime()
-      ? -1
-      : 1;
-  });
-  return fourByteResponse.results[0].text_signature;
-}
-
-let registry;
-
-/**
- * Attempts to return the method data from the MethodRegistry library, the message registry library and the token abi, in that order of preference
- *
- * @param {string} fourBytePrefix - The prefix from the method code associated with the data
- * @returns {object}
- */
-export async function getMethodDataAsync(fourBytePrefix) {
-  try {
-    const fourByteSig = await getMethodFrom4Byte(fourBytePrefix).catch((e) => {
-      log.error(e);
-      return null;
-    });
-
-    if (!registry) {
-      registry = new MethodRegistry({ provider: global.ethereumProvider });
-    }
-
-    if (!fourByteSig) {
-      return {};
-    }
-
-    const parsedResult = registry.parse(fourByteSig);
-
-    return {
-      name: parsedResult.name,
-      params: parsedResult.args,
-    };
-  } catch (error) {
-    log.error(error);
-    return {};
-  }
-}
 
 /**
  * Returns four-byte method signature from data
@@ -98,11 +31,12 @@ export function getFourBytePrefix(data = '') {
  */
 export function isTokenMethodAction(type) {
   return [
-    TRANSACTION_TYPES.TOKEN_METHOD_TRANSFER,
-    TRANSACTION_TYPES.TOKEN_METHOD_APPROVE,
-    TRANSACTION_TYPES.TOKEN_METHOD_SET_APPROVAL_FOR_ALL,
-    TRANSACTION_TYPES.TOKEN_METHOD_TRANSFER_FROM,
-    TRANSACTION_TYPES.TOKEN_METHOD_SAFE_TRANSFER_FROM,
+    TransactionType.tokenMethodTransfer,
+    TransactionType.tokenMethodApprove,
+    TransactionType.tokenMethodSetApprovalForAll,
+    TransactionType.tokenMethodTransferFrom,
+    TransactionType.tokenMethodSafeTransferFrom,
+    TransactionType.tokenMethodIncreaseAllowance,
   ].includes(type);
 }
 
@@ -135,20 +69,8 @@ export async function isSmartContractAddress(address) {
   return isContractAddress;
 }
 
-export function sumHexes(...args) {
-  const total = args.reduce((acc, hexAmount) => {
-    return addCurrencies(acc, hexAmount, {
-      toNumericBase: 'hex',
-      aBase: 16,
-      bBase: 16,
-    });
-  });
-
-  return addHexPrefix(total);
-}
-
 export function isLegacyTransaction(txParams) {
-  return txParams?.type === TRANSACTION_ENVELOPE_TYPES.LEGACY;
+  return txParams?.type === TransactionEnvelopeType.legacy;
 }
 
 /**
@@ -168,14 +90,14 @@ export function getStatusKey(transaction) {
 
   // There was an on-chain failure
   if (receiptStatus === '0x0') {
-    return TRANSACTION_STATUSES.FAILED;
+    return TransactionStatus.failed;
   }
 
   if (
-    status === TRANSACTION_STATUSES.CONFIRMED &&
-    type === TRANSACTION_TYPES.CANCEL
+    status === TransactionStatus.confirmed &&
+    type === TransactionType.cancel
   ) {
-    return TRANSACTION_GROUP_STATUSES.CANCELLED;
+    return TransactionGroupStatus.cancelled;
   }
 
   return transaction.status;
@@ -193,34 +115,40 @@ export function getStatusKey(transaction) {
  */
 export function getTransactionTypeTitle(t, type, nativeCurrency = 'ETH') {
   switch (type) {
-    case TRANSACTION_TYPES.TOKEN_METHOD_TRANSFER: {
+    case TransactionType.tokenMethodTransfer: {
       return t('transfer');
     }
-    case TRANSACTION_TYPES.TOKEN_METHOD_TRANSFER_FROM: {
+    case TransactionType.tokenMethodTransferFrom: {
       return t('transferFrom');
     }
-    case TRANSACTION_TYPES.TOKEN_METHOD_SAFE_TRANSFER_FROM: {
+    case TransactionType.tokenMethodSafeTransferFrom: {
       return t('safeTransferFrom');
     }
-    case TRANSACTION_TYPES.TOKEN_METHOD_APPROVE: {
+    case TransactionType.tokenMethodApprove: {
       return t('approve');
     }
-    case TRANSACTION_TYPES.TOKEN_METHOD_SET_APPROVAL_FOR_ALL: {
+    case TransactionType.tokenMethodSetApprovalForAll: {
       return t('setApprovalForAll');
     }
-    case TRANSACTION_TYPES.SIMPLE_SEND: {
+    case TransactionType.tokenMethodIncreaseAllowance: {
+      return t('approveIncreaseAllowance');
+    }
+    case TransactionType.simpleSend: {
       return t('sendingNativeAsset', [nativeCurrency]);
     }
-    case TRANSACTION_TYPES.CONTRACT_INTERACTION: {
+    case TransactionType.contractInteraction: {
       return t('contractInteraction');
     }
-    case TRANSACTION_TYPES.DEPLOY_CONTRACT: {
+    case TransactionType.deployContract: {
       return t('contractDeployment');
     }
-    case TRANSACTION_TYPES.SWAP: {
+    case TransactionType.swap: {
       return t('swap');
     }
-    case TRANSACTION_TYPES.SWAP_APPROVAL: {
+    case TransactionType.swapAndSend: {
+      return t('swapAndSend');
+    }
+    case TransactionType.swapApproval: {
       return t('swapApproval');
     }
     default: {
@@ -228,3 +156,12 @@ export function getTransactionTypeTitle(t, type, nativeCurrency = 'ETH') {
     }
   }
 }
+
+/**
+ * Method to check if asset standard passed is NFT
+ *
+ * @param {*} assetStandard - string
+ * @returns boolean
+ */
+export const isNFTAssetStandard = (assetStandard) =>
+  assetStandard === ERC1155 || assetStandard === ERC721;

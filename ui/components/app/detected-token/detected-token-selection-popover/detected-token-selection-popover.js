@@ -1,19 +1,30 @@
-import React, { useContext } from 'react';
+import React, { useContext, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
 
 import { useI18nContext } from '../../../../hooks/useI18nContext';
 import { MetaMetricsContext } from '../../../../contexts/metametrics';
 import {
-  EVENT,
-  EVENT_NAMES,
+  MetaMetricsEventCategory,
+  MetaMetricsEventName,
+  MetaMetricsTokenEventSource,
 } from '../../../../../shared/constants/metametrics';
-import { getDetectedTokensInCurrentNetwork } from '../../../../selectors';
+import {
+  getCurrentChainId,
+  getNetworkConfigurationsByChainId,
+} from '../../../../../shared/modules/selectors/networks';
+import {
+  getAllDetectedTokensForSelectedAddress,
+  getCurrentNetwork,
+  getDetectedTokensInCurrentNetwork,
+  getPreferences,
+} from '../../../../selectors';
 
 import Popover from '../../../ui/popover';
 import Box from '../../../ui/box';
 import Button from '../../../ui/button';
 import DetectedTokenDetails from '../detected-token-details/detected-token-details';
+import { trace, endTrace, TraceName } from '../../../../../shared/lib/trace';
 
 const DetectedTokenSelectionPopover = ({
   tokensListDetected,
@@ -26,25 +37,54 @@ const DetectedTokenSelectionPopover = ({
   const t = useI18nContext();
   const trackEvent = useContext(MetaMetricsContext);
 
+  const chainId = useSelector(getCurrentChainId);
+
   const detectedTokens = useSelector(getDetectedTokensInCurrentNetwork);
+  const allNetworks = useSelector(getNetworkConfigurationsByChainId);
+  const { tokenNetworkFilter } = useSelector(getPreferences);
+  const allOpts = {};
+  Object.keys(allNetworks || {}).forEach((networkId) => {
+    allOpts[networkId] = true;
+  });
+
+  const allNetworksFilterShown =
+    Object.keys(tokenNetworkFilter || {}).length !==
+    Object.keys(allOpts || {}).length;
+
+  const currentNetwork = useSelector(getCurrentNetwork);
+
+  const detectedTokensMultichain = useSelector(
+    getAllDetectedTokensForSelectedAddress,
+  );
+
+  const totalTokens = useMemo(() => {
+    return process.env.PORTFOLIO_VIEW && !allNetworksFilterShown
+      ? Object.values(detectedTokensMultichain).reduce(
+          (count, tokenArray) => count + tokenArray.length,
+          0,
+        )
+      : detectedTokens.length;
+  }, [detectedTokensMultichain, detectedTokens, allNetworksFilterShown]);
+
   const { selected: selectedTokens = [] } =
     sortingBasedOnTokenSelection(tokensListDetected);
-  const numOfTokensImporting =
-    selectedTokens.length === detectedTokens.length
-      ? `All`
-      : `(${selectedTokens.length})`;
 
   const onClose = () => {
+    const chainIds = Object.keys(detectedTokensMultichain);
+
     setShowDetectedTokens(false);
     const eventTokensDetails = detectedTokens.map(
       ({ address, symbol }) => `${symbol} - ${address}`,
     );
     trackEvent({
-      event: EVENT_NAMES.TOKEN_IMPORT_CANCELED,
-      category: EVENT.CATEGORIES.WALLET,
+      event: MetaMetricsEventName.TokenImportCanceled,
+      category: MetaMetricsEventCategory.Wallet,
       properties: {
-        source: EVENT.SOURCE.TOKEN.DETECTED,
+        source_connection_method: MetaMetricsTokenEventSource.Detected,
         tokens: eventTokensDetails,
+        ...(process.env.PORTFOLIO_VIEW
+          ? { chain_ids: chainIds }
+          : { chain_id: chainId }),
       },
     });
   };
@@ -61,9 +101,14 @@ const DetectedTokenSelectionPopover = ({
       <Button
         className="detected-token-selection-popover__import-button"
         type="primary"
-        onClick={onImport}
+        onClick={() => {
+          endTrace({ name: TraceName.AccountOverviewAssetListTab });
+          trace({ name: TraceName.AccountOverviewAssetListTab });
+          onImport();
+        }}
+        disabled={selectedTokens.length === 0}
       >
-        {t('importWithCount', [numOfTokensImporting])}
+        {t('importWithCount', [`(${selectedTokens.length})`])}
       </Button>
     </>
   );
@@ -72,25 +117,44 @@ const DetectedTokenSelectionPopover = ({
     <Popover
       className="detected-token-selection-popover"
       title={
-        detectedTokens.length === 1
+        totalTokens === 1
           ? t('tokenFoundTitle')
-          : t('tokensFoundTitle', [detectedTokens.length])
+          : t('tokensFoundTitle', [totalTokens])
       }
       onClose={onClose}
       footer={footer}
     >
-      <Box margin={3}>
-        {detectedTokens.map((token, index) => {
-          return (
-            <DetectedTokenDetails
-              key={index}
-              token={token}
-              handleTokenSelection={handleTokenSelection}
-              tokensListDetected={tokensListDetected}
-            />
-          );
-        })}
-      </Box>
+      {process.env.PORTFOLIO_VIEW && !allNetworksFilterShown ? (
+        <Box margin={3}>
+          {Object.entries(detectedTokensMultichain).map(
+            ([networkId, tokens]) => {
+              return tokens.map((token, index) => (
+                <DetectedTokenDetails
+                  key={`${networkId}-${index}`}
+                  token={token}
+                  chainId={networkId}
+                  handleTokenSelection={handleTokenSelection}
+                  tokensListDetected={tokensListDetected}
+                />
+              ));
+            },
+          )}
+        </Box>
+      ) : (
+        <Box margin={3}>
+          {detectedTokens.map((token, index) => {
+            return (
+              <DetectedTokenDetails
+                key={index}
+                token={token}
+                handleTokenSelection={handleTokenSelection}
+                tokensListDetected={tokensListDetected}
+                chainId={currentNetwork.chainId}
+              />
+            );
+          })}
+        </Box>
+      )}
     </Popover>
   );
 };

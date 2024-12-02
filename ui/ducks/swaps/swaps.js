@@ -4,9 +4,12 @@ import log from 'loglevel';
 
 import { captureMessage } from '@sentry/browser';
 
+import { TransactionType } from '@metamask/transaction-controller';
+import { createProjectLogger } from '@metamask/utils';
+import { CHAIN_IDS } from '../../../shared/constants/network';
 import {
   addToken,
-  addUnapprovedTransaction,
+  addTransactionAndWaitForPublish,
   fetchAndSetQuotes,
   forceUpdateMetamaskState,
   resetSwapsPostFetchState,
@@ -14,18 +17,12 @@ import {
   setInitialGasEstimate,
   setSwapsErrorKey,
   setSwapsTxGasPrice,
-  setApproveTxId,
-  setTradeTxId,
   stopPollingForQuotes,
-  updateAndApproveTx,
-  updateSwapApprovalTransaction,
-  updateSwapTransaction,
   resetBackgroundSwapsState,
   setSwapsLiveness,
   setSwapsFeatureFlags,
   setSelectedQuoteAggId,
   setSwapsTxGasLimit,
-  cancelTx,
   fetchSmartTransactionsLiveness,
   signAndSendSmartTransaction,
   updateSmartTransaction,
@@ -37,11 +34,11 @@ import {
 import {
   AWAITING_SIGNATURES_ROUTE,
   AWAITING_SWAP_ROUTE,
-  BUILD_QUOTE_ROUTE,
   LOADING_QUOTES_ROUTE,
   SWAPS_ERROR_ROUTE,
   SWAPS_MAINTENANCE_ROUTE,
   SMART_TRANSACTION_STATUS_ROUTE,
+  PREPARE_SWAP_ROUTE,
 } from '../../helpers/constants/routes';
 import {
   fetchSwapsFeatureFlags,
@@ -49,30 +46,37 @@ import {
   isContractAddressValid,
   getSwapsLivenessForNetwork,
   parseSmartTransactionsError,
-  stxErrorTypes,
+  StxErrorTypes,
+  getSwap1559GasFeeEstimates,
 } from '../../pages/swaps/swaps.util';
-import { calcGasTotal } from '../../pages/send/send.utils';
 import {
+  addHexes,
+  decGWEIToHexWEI,
   decimalToHex,
   getValueFromWeiHex,
-  decGWEIToHexWEI,
   hexWEIToDecGWEI,
-  addHexes,
-} from '../../helpers/utils/conversions.util';
-import { conversionLessThan } from '../../../shared/modules/conversion.utils';
-import { calcTokenAmount } from '../../helpers/utils/token-util';
+} from '../../../shared/modules/conversion.utils';
+import { getCurrentChainId } from '../../../shared/modules/selectors/networks';
 import {
   getSelectedAccount,
   getTokenExchangeRates,
   getUSDConversionRate,
   getSwapsDefaultToken,
-  getCurrentChainId,
   isHardwareWallet,
   getHardwareWalletType,
   checkNetworkAndAccountSupports1559,
+  getSelectedInternalAccount,
+  getSelectedNetwork,
 } from '../../selectors';
-
-import { EVENT } from '../../../shared/constants/metametrics';
+import {
+  getSmartTransactionsEnabled,
+  getSmartTransactionsOptInStatusForMetrics,
+  getSmartTransactionsPreferenceEnabled,
+} from '../../../shared/modules/selectors';
+import {
+  MetaMetricsEventCategory,
+  MetaMetricsEventName,
+} from '../../../shared/constants/metametrics';
 import {
   ERROR_FETCHING_QUOTES,
   QUOTES_NOT_AVAILABLE_ERROR,
@@ -80,24 +84,30 @@ import {
   SWAP_FAILED_ERROR,
   SWAPS_FETCH_ORDER_CONFLICT,
   ALLOWED_SMART_TRANSACTIONS_CHAIN_IDS,
-  SLIPPAGE,
+  Slippage,
 } from '../../../shared/constants/swaps';
 import {
-  TRANSACTION_TYPES,
   IN_PROGRESS_TRANSACTION_STATUSES,
-  SMART_TRANSACTION_STATUSES,
+  SmartTransactionStatus,
 } from '../../../shared/constants/transaction';
-import { getGasFeeEstimates } from '../metamask/metamask';
+import { getGasFeeEstimates, getTokens } from '../metamask/metamask';
 import { ORIGIN_METAMASK } from '../../../shared/constants/app';
+import {
+  calcGasTotal,
+  calcTokenAmount,
+} from '../../../shared/lib/transactions-controller-utils';
+import { EtherDenomination } from '../../../shared/constants/common';
+import { Numeric } from '../../../shared/modules/Numeric';
+import { calculateMaxGasLimit } from '../../../shared/lib/swaps-utils';
 
-const GAS_PRICES_LOADING_STATES = {
+const debugLog = createProjectLogger('swaps');
+
+export const GAS_PRICES_LOADING_STATES = {
   INITIAL: 'INITIAL',
   LOADING: 'LOADING',
   FAILED: 'FAILED',
   COMPLETED: 'COMPLETED',
 };
-
-export const FALLBACK_GAS_MULTIPLIER = 1.5;
 
 const initialState = {
   aggregatorMetadata: null,
@@ -109,7 +119,7 @@ const initialState = {
   fromTokenInputValue: '',
   fromTokenError: null,
   isFeatureFlagLoaded: false,
-  maxSlippage: SLIPPAGE.DEFAULT,
+  maxSlippage: Slippage.default,
   quotesFetchStartTime: null,
   reviewSwapClickedTimestamp: null,
   topAssets: {},
@@ -122,8 +132,9 @@ const initialState = {
     fallBackPrice: null,
   },
   currentSmartTransactionsError: '',
-  currentSmartTransactionsErrorMessageDismissed: false,
   swapsSTXLoading: false,
+  transactionSettingsOpened: false,
+  latestAddedTokenTo: '',
 };
 
 const slice = createSlice({
@@ -152,6 +163,9 @@ const slice = createSlice({
     },
     setFetchingQuotes: (state, action) => {
       state.fetchingQuotes = action.payload;
+    },
+    setLatestAddedTokenTo: (state, action) => {
+      state.latestAddedTokenTo = action.payload;
     },
     setFromToken: (state, action) => {
       state.fromToken = action.payload;
@@ -204,16 +218,19 @@ const slice = createSlice({
       state.customGas.fallBackPrice = action.payload;
     },
     setCurrentSmartTransactionsError: (state, action) => {
-      const errorType = Object.values(stxErrorTypes).includes(action.payload)
+      const isValidCurrentStxError =
+        Object.values(StxErrorTypes).includes(action.payload) ||
+        action.payload === undefined;
+      const errorType = isValidCurrentStxError
         ? action.payload
-        : stxErrorTypes.UNAVAILABLE;
+        : StxErrorTypes.unavailable;
       state.currentSmartTransactionsError = errorType;
-    },
-    dismissCurrentSmartTransactionsErrorMessage: (state) => {
-      state.currentSmartTransactionsErrorMessageDismissed = true;
     },
     setSwapsSTXSubmitLoading: (state, action) => {
       state.swapsSTXLoading = action.payload || false;
+    },
+    setTransactionSettingsOpened: (state, action) => {
+      state.transactionSettingsOpened = Boolean(action.payload);
     },
   },
 });
@@ -248,6 +265,8 @@ export const getToToken = (state) => state.swaps.toToken;
 
 export const getFetchingQuotes = (state) => state.swaps.fetchingQuotes;
 
+export const getLatestAddedTokenTo = (state) => state.swaps.latestAddedTokenTo;
+
 export const getQuotesFetchStartTime = (state) =>
   state.swaps.quotesFetchStartTime;
 
@@ -275,8 +294,8 @@ export const getSwapsFallbackGasPrice = (state) =>
 export const getCurrentSmartTransactionsError = (state) =>
   state.swaps.currentSmartTransactionsError;
 
-export const getCurrentSmartTransactionsErrorMessageDismissed = (state) =>
-  state.swaps.currentSmartTransactionsErrorMessageDismissed;
+export const getTransactionSettingsOpened = (state) =>
+  state.swaps.transactionSettingsOpened;
 
 export function shouldShowCustomPriceTooLowWarning(state) {
   const { average } = getSwapGasPriceEstimateData(state);
@@ -287,15 +306,13 @@ export function shouldShowCustomPriceTooLowWarning(state) {
     return false;
   }
 
-  const customPriceRisksSwapFailure = conversionLessThan(
-    {
-      value: customGasPrice,
-      fromNumericBase: 'hex',
-      fromDenomination: 'WEI',
-      toDenomination: 'GWEI',
-    },
-    { value: average, fromNumericBase: 'dec' },
-  );
+  const customPriceRisksSwapFailure = new Numeric(
+    customGasPrice,
+    16,
+    EtherDenomination.WEI,
+  )
+    .toDenomination(EtherDenomination.GWEI)
+    .greaterThan(average, 10);
 
   return customPriceRisksSwapFailure;
 }
@@ -312,24 +329,6 @@ export const getSmartTransactionsError = (state) =>
 
 export const getSmartTransactionsErrorMessageDismissed = (state) =>
   state.appState.smartTransactionsErrorMessageDismissed;
-
-export const getSmartTransactionsEnabled = (state) => {
-  const hardwareWalletUsed = isHardwareWallet(state);
-  const chainId = getCurrentChainId(state);
-  const isAllowedNetwork =
-    ALLOWED_SMART_TRANSACTIONS_CHAIN_IDS.includes(chainId);
-  const smartTransactionsFeatureFlagEnabled =
-    state.metamask.swapsState?.swapsFeatureFlags?.smartTransactions
-      ?.extensionActive;
-  const smartTransactionsLiveness =
-    state.metamask.smartTransactionsState?.liveness;
-  return Boolean(
-    isAllowedNetwork &&
-      !hardwareWalletUsed &&
-      smartTransactionsFeatureFlagEnabled &&
-      smartTransactionsLiveness,
-  );
-};
 
 export const getCurrentSmartTransactionsEnabled = (state) => {
   const smartTransactionsEnabled = getSmartTransactionsEnabled(state);
@@ -416,10 +415,6 @@ export const getApproveTxParams = (state) => {
   return { ...approvalNeeded, gasPrice, data };
 };
 
-export const getSmartTransactionsOptInStatus = (state) => {
-  return state.metamask.smartTransactionsState?.userOptIn;
-};
-
 export const getCurrentSmartTransactions = (state) => {
   return state.metamask.smartTransactionsState?.smartTransactions?.[
     getCurrentChainId(state)
@@ -432,12 +427,19 @@ export const getPendingSmartTransactions = (state) => {
     return [];
   }
   return currentSmartTransactions.filter(
-    (stx) => stx.status === SMART_TRANSACTION_STATUSES.PENDING,
+    (stx) => stx.status === SmartTransactionStatus.pending,
   );
 };
 
 export const getSmartTransactionFees = (state) => {
-  return state.metamask.smartTransactionsState?.fees;
+  const usedQuote = getUsedQuote(state);
+  if (!usedQuote?.isGasIncludedTrade) {
+    return state.metamask.smartTransactionsState?.fees;
+  }
+  return {
+    approvalTxFees: usedQuote.approvalTxFees,
+    tradeTxFees: usedQuote.tradeTxFees,
+  };
 };
 
 export const getSmartTransactionEstimatedGas = (state) => {
@@ -475,6 +477,7 @@ const {
   setAggregatorMetadata,
   setBalanceError,
   setFetchingQuotes,
+  setLatestAddedTokenTo,
   setFromToken,
   setFromTokenError,
   setFromTokenInputValue,
@@ -489,16 +492,16 @@ const {
   retrievedFallbackSwapsGasPrice,
   swapCustomGasModalClosed,
   setCurrentSmartTransactionsError,
-  dismissCurrentSmartTransactionsErrorMessage,
   setSwapsSTXSubmitLoading,
+  setTransactionSettingsOpened,
 } = actions;
 
 export {
   clearSwapsState,
-  dismissCurrentSmartTransactionsErrorMessage,
   setAggregatorMetadata,
   setBalanceError,
   setFetchingQuotes,
+  setLatestAddedTokenTo,
   setFromToken as setSwapsFromToken,
   setFromTokenError,
   setFromTokenInputValue,
@@ -511,14 +514,16 @@ export {
   swapCustomGasModalPriceEdited,
   swapCustomGasModalLimitEdited,
   swapCustomGasModalClosed,
+  setTransactionSettingsOpened,
+  slice as swapsSlice,
 };
 
-export const navigateBackToBuildQuote = (history) => {
+export const navigateBackToPrepareSwap = (history) => {
   return async (dispatch) => {
     // TODO: Ensure any fetch in progress is cancelled
     await dispatch(setBackgroundSwapRouteState(''));
     dispatch(navigatedBackToBuildQuote());
-    history.push(BUILD_QUOTE_ROUTE);
+    history.push(PREPARE_SWAP_ROUTE);
   };
 };
 
@@ -562,7 +567,7 @@ const disableStxIfRegularTxInProgress = (dispatch, transactions) => {
   for (const transaction of transactions) {
     if (IN_PROGRESS_TRANSACTION_STATUSES.includes(transaction.status)) {
       dispatch(
-        setCurrentSmartTransactionsError(stxErrorTypes.REGULAR_TX_IN_PROGRESS),
+        setCurrentSmartTransactionsError(StxErrorTypes.regularTxPending),
       );
       break;
     }
@@ -580,17 +585,19 @@ export const fetchSwapsLivenessAndFeatureFlags = () => {
       const swapsFeatureFlags = await fetchSwapsFeatureFlags();
       await dispatch(setSwapsFeatureFlags(swapsFeatureFlags));
       if (ALLOWED_SMART_TRANSACTIONS_CHAIN_IDS.includes(chainId)) {
+        await dispatch(setCurrentSmartTransactionsError(undefined));
         await dispatch(fetchSmartTransactionsLiveness());
         const transactions = await getTransactions({
           searchCriteria: {
-            from: state.metamask?.selectedAddress,
+            chainId,
+            from: getSelectedInternalAccount(state)?.address,
           },
         });
         disableStxIfRegularTxInProgress(dispatch, transactions);
       }
       swapsLivenessForNetwork = getSwapsLivenessForNetwork(
-        swapsFeatureFlags,
         chainId,
+        swapsFeatureFlags,
       );
     } catch (error) {
       log.error(
@@ -604,6 +611,15 @@ export const fetchSwapsLivenessAndFeatureFlags = () => {
   };
 };
 
+const isTokenAlreadyAdded = (tokenAddress, tokens) => {
+  if (!Array.isArray(tokens)) {
+    return false;
+  }
+  return tokens.find(
+    (token) => token.address.toLowerCase() === tokenAddress.toLowerCase(),
+  );
+};
+
 export const fetchQuotesAndSetQuoteState = (
   history,
   inputValue,
@@ -613,15 +629,15 @@ export const fetchQuotesAndSetQuoteState = (
 ) => {
   return async (dispatch, getState) => {
     const state = getState();
-    const chainId = getCurrentChainId(state);
+    const selectedNetwork = getSelectedNetwork(state);
     let swapsLivenessForNetwork = {
       swapsFeatureIsLive: false,
     };
     try {
       const swapsFeatureFlags = await fetchSwapsFeatureFlags();
       swapsLivenessForNetwork = getSwapsLivenessForNetwork(
+        selectedNetwork.configuration.chainId,
         swapsFeatureFlags,
-        chainId,
       );
     } catch (error) {
       log.error('Failed to fetch Swaps liveness, defaulting to false.', error);
@@ -668,23 +684,33 @@ export const fetchQuotesAndSetQuoteState = (
 
     const contractExchangeRates = getTokenExchangeRates(state);
 
-    let destinationTokenAddedForSwap = false;
     if (
       toTokenAddress &&
       toTokenSymbol !== swapsDefaultToken.symbol &&
-      contractExchangeRates[toTokenAddress] === undefined
+      contractExchangeRates[toTokenAddress] === undefined &&
+      !isTokenAlreadyAdded(toTokenAddress, getTokens(state))
     ) {
-      destinationTokenAddedForSwap = true;
       await dispatch(
         addToken(
-          toTokenAddress,
-          toTokenSymbol,
-          toTokenDecimals,
-          toTokenIconUrl,
+          {
+            address: toTokenAddress,
+            symbol: toTokenSymbol,
+            decimals: toTokenDecimals,
+            image: toTokenIconUrl,
+            networkClientId: selectedNetwork.clientId,
+          },
           true,
         ),
       );
+      await dispatch(setLatestAddedTokenTo(toTokenAddress));
+    } else {
+      const latestAddedTokenTo = getLatestAddedTokenTo(state);
+      // Only reset the latest added Token To if it's a different token.
+      if (latestAddedTokenTo !== toTokenAddress) {
+        await dispatch(setLatestAddedTokenTo(''));
+      }
     }
+
     if (
       fromTokenAddress &&
       fromTokenSymbol !== swapsDefaultToken.symbol &&
@@ -694,10 +720,13 @@ export const fetchQuotesAndSetQuoteState = (
     ) {
       dispatch(
         addToken(
-          fromTokenAddress,
-          fromTokenSymbol,
-          fromTokenDecimals,
-          fromTokenIconUrl,
+          {
+            address: fromTokenAddress,
+            symbol: fromTokenSymbol,
+            decimals: fromTokenDecimals,
+            image: fromTokenIconUrl,
+            networkClientId: selectedNetwork.clientId,
+          },
           true,
         ),
       );
@@ -718,25 +747,24 @@ export const fetchQuotesAndSetQuoteState = (
     const hardwareWalletType = getHardwareWalletType(state);
     const networkAndAccountSupports1559 =
       checkNetworkAndAccountSupports1559(state);
-    const smartTransactionsOptInStatus = getSmartTransactionsOptInStatus(state);
     const smartTransactionsEnabled = getSmartTransactionsEnabled(state);
     const currentSmartTransactionsEnabled =
       getCurrentSmartTransactionsEnabled(state);
     trackEvent({
-      event: 'Quotes Requested',
-      category: EVENT.CATEGORIES.SWAPS,
+      event: MetaMetricsEventName.QuotesRequested,
+      category: MetaMetricsEventCategory.Swaps,
       sensitiveProperties: {
         token_from: fromTokenSymbol,
         token_from_amount: String(inputValue),
         token_to: toTokenSymbol,
         request_type: balanceError ? 'Quote' : 'Order',
         slippage: maxSlippage,
-        custom_slippage: maxSlippage !== SLIPPAGE.DEFAULT,
+        custom_slippage: maxSlippage !== Slippage.default,
         is_hardware_wallet: hardwareWalletUsed,
         hardware_wallet_type: hardwareWalletType,
         stx_enabled: smartTransactionsEnabled,
         current_stx_enabled: currentSmartTransactionsEnabled,
-        stx_user_opt_in: smartTransactionsOptInStatus,
+        stx_user_opt_in: getSmartTransactionsOptInStatusForMetrics(state),
         anonymizedData: true,
       },
     });
@@ -753,15 +781,17 @@ export const fetchQuotesAndSetQuoteState = (
             destinationToken: toTokenAddress,
             value: inputValue,
             fromAddress: selectedAccount.address,
-            destinationTokenAddedForSwap,
             balanceError,
             sourceDecimals: fromTokenDecimals,
+            enableGasIncludedQuotes:
+              currentSmartTransactionsEnabled &&
+              getSmartTransactionsPreferenceEnabled(state),
           },
           {
             sourceTokenInfo,
             destinationTokenInfo,
             accountBalance: selectedAccount.balance,
-            chainId,
+            networkClientId: selectedNetwork.clientId,
           },
         ),
       );
@@ -778,39 +808,48 @@ export const fetchQuotesAndSetQuoteState = (
       if (Object.values(fetchedQuotes)?.length === 0) {
         trackEvent({
           event: 'No Quotes Available',
-          category: EVENT.CATEGORIES.SWAPS,
+          category: MetaMetricsEventCategory.Swaps,
           sensitiveProperties: {
             token_from: fromTokenSymbol,
             token_from_amount: String(inputValue),
             token_to: toTokenSymbol,
             request_type: balanceError ? 'Quote' : 'Order',
             slippage: maxSlippage,
-            custom_slippage: maxSlippage !== SLIPPAGE.DEFAULT,
+            custom_slippage: maxSlippage !== Slippage.default,
             is_hardware_wallet: hardwareWalletUsed,
             hardware_wallet_type: hardwareWalletType,
             stx_enabled: smartTransactionsEnabled,
             current_stx_enabled: currentSmartTransactionsEnabled,
-            stx_user_opt_in: smartTransactionsOptInStatus,
+            stx_user_opt_in: getSmartTransactionsOptInStatusForMetrics(state),
           },
         });
         dispatch(setSwapsErrorKey(QUOTES_NOT_AVAILABLE_ERROR));
       } else {
         const newSelectedQuote = fetchedQuotes[selectedAggId];
 
+        const tokenToAmountBN = calcTokenAmount(
+          newSelectedQuote.destinationAmount,
+          newSelectedQuote.decimals || 18,
+        );
+
+        // Firefox and Chrome have different implementations of the APIs
+        // that we rely on for communication accross the app. On Chrome big
+        // numbers are converted into number strings, on firefox they remain
+        // Big Number objects. As such, we convert them here for both
+        // browsers.
+        const tokenToAmountToString = tokenToAmountBN.toString(10);
+
         trackEvent({
-          event: 'Quotes Received',
-          category: EVENT.CATEGORIES.SWAPS,
+          event: MetaMetricsEventName.QuotesReceived,
+          category: MetaMetricsEventCategory.Swaps,
           sensitiveProperties: {
             token_from: fromTokenSymbol,
             token_from_amount: String(inputValue),
             token_to: toTokenSymbol,
-            token_to_amount: calcTokenAmount(
-              newSelectedQuote.destinationAmount,
-              newSelectedQuote.decimals || 18,
-            ),
+            token_to_amount: tokenToAmountToString,
             request_type: balanceError ? 'Quote' : 'Order',
             slippage: maxSlippage,
-            custom_slippage: maxSlippage !== SLIPPAGE.DEFAULT,
+            custom_slippage: maxSlippage !== Slippage.default,
             response_time: Date.now() - fetchStartTime,
             best_quote_source: newSelectedQuote.aggregator,
             available_quotes: Object.values(fetchedQuotes)?.length,
@@ -818,7 +857,8 @@ export const fetchQuotesAndSetQuoteState = (
             hardware_wallet_type: hardwareWalletType,
             stx_enabled: smartTransactionsEnabled,
             current_stx_enabled: currentSmartTransactionsEnabled,
-            stx_user_opt_in: smartTransactionsOptInStatus,
+            stx_user_opt_in: getSmartTransactionsOptInStatusForMetrics(state),
+            gas_included: newSelectedQuote.isGasIncludedTrade,
             anonymizedData: true,
           },
         });
@@ -851,11 +891,13 @@ export const signAndSendSwapsSmartTransaction = ({
     dispatch(setSwapsSTXSubmitLoading(true));
     const state = getState();
     const fetchParams = getFetchParams(state);
+    const hardwareWalletUsed = isHardwareWallet(state);
+    const hardwareWalletType = getHardwareWalletType(state);
     const { metaData, value: swapTokenValue, slippage } = fetchParams;
     const { sourceTokenInfo = {}, destinationTokenInfo = {} } = metaData;
     const usedQuote = getUsedQuote(state);
     const swapsNetworkConfig = getSwapsNetworkConfig(state);
-    const chainId = getCurrentChainId(state);
+    const selectedNetwork = getSelectedNetwork(state);
 
     dispatch(
       setSmartTransactionsRefreshInterval(
@@ -870,7 +912,6 @@ export const signAndSendSwapsSmartTransaction = ({
       usedQuote.destinationAmount,
       destinationTokenInfo.decimals || 18,
     ).toPrecision(8);
-    const smartTransactionsOptInStatus = getSmartTransactionsOptInStatus(state);
     const smartTransactionsEnabled = getSmartTransactionsEnabled(state);
     const currentSmartTransactionsEnabled =
       getCurrentSmartTransactionsEnabled(state);
@@ -893,18 +934,26 @@ export const signAndSendSwapsSmartTransaction = ({
       performance_savings: usedQuote.savings?.performance,
       fee_savings: usedQuote.savings?.fee,
       median_metamask_fee: usedQuote.savings?.medianMetaMaskFee,
+      is_hardware_wallet: hardwareWalletUsed,
+      hardware_wallet_type: hardwareWalletType,
       stx_enabled: smartTransactionsEnabled,
       current_stx_enabled: currentSmartTransactionsEnabled,
-      stx_user_opt_in: smartTransactionsOptInStatus,
+      stx_user_opt_in: getSmartTransactionsOptInStatusForMetrics(state),
+      gas_included: usedQuote.isGasIncludedTrade,
       ...additionalTrackingParams,
     };
     trackEvent({
       event: 'STX Swap Started',
-      category: EVENT.CATEGORIES.SWAPS,
+      category: MetaMetricsEventCategory.Swaps,
       sensitiveProperties: swapMetaData,
     });
 
-    if (!isContractAddressValid(usedTradeTxParams.to, chainId)) {
+    if (
+      !isContractAddressValid(
+        usedTradeTxParams.to,
+        selectedNetwork.configuration.chainId,
+      )
+    ) {
       captureMessage('Invalid contract address', {
         extra: {
           token_from: swapMetaData.token_from,
@@ -927,23 +976,29 @@ export const signAndSendSwapsSmartTransaction = ({
           value: '0x0',
         };
       }
-      const fees = await dispatch(
-        fetchSwapsSmartTransactionFees({
-          unsignedTransaction,
-          approveTxParams: updatedApproveTxParams,
-          fallbackOnNotEnoughFunds: true,
-        }),
-      );
+      let fees;
+      if (usedQuote.isGasIncludedTrade) {
+        fees = getSmartTransactionFees(state);
+      } else {
+        fees = await dispatch(
+          fetchSwapsSmartTransactionFees({
+            unsignedTransaction,
+            approveTxParams: updatedApproveTxParams,
+            fallbackOnNotEnoughFunds: true,
+          }),
+        );
+      }
       if (!fees) {
         log.error('"fetchSwapsSmartTransactionFees" failed');
         dispatch(setSwapsSTXSubmitLoading(false));
-        dispatch(setCurrentSmartTransactionsError(stxErrorTypes.UNAVAILABLE));
+        dispatch(setCurrentSmartTransactionsError(StxErrorTypes.unavailable));
         return;
       }
       if (approveTxParams) {
         updatedApproveTxParams.gas = `0x${decimalToHex(
           fees.approvalTxFees?.gasLimit || 0,
         )}`;
+        updatedApproveTxParams.chainId = selectedNetwork.configuration.chainId;
         approvalTxUuid = await dispatch(
           signAndSendSmartTransaction({
             unsignedTransaction: updatedApproveTxParams,
@@ -954,6 +1009,7 @@ export const signAndSendSwapsSmartTransaction = ({
       unsignedTransaction.gas = `0x${decimalToHex(
         fees.tradeTxFees?.gasLimit || 0,
       )}`;
+      unsignedTransaction.chainId = selectedNetwork.configuration.chainId;
       const uuid = await dispatch(
         signAndSendSmartTransaction({
           unsignedTransaction,
@@ -974,14 +1030,14 @@ export const signAndSendSwapsSmartTransaction = ({
           sourceTokenSymbol,
           swapMetaData,
           swapTokenValue,
-          type: TRANSACTION_TYPES.SWAP,
+          type: TransactionType.swap,
         }),
       );
       if (approvalTxUuid) {
         await dispatch(
           updateSmartTransaction(approvalTxUuid, {
             origin: ORIGIN_METAMASK,
-            type: TRANSACTION_TYPES.SWAP_APPROVAL,
+            type: TransactionType.swapApproval,
             sourceTokenSymbol,
           }),
         );
@@ -990,6 +1046,7 @@ export const signAndSendSwapsSmartTransaction = ({
       dispatch(setSwapsSTXSubmitLoading(false));
     } catch (e) {
       console.log('signAndSendSwapsSmartTransaction error', e);
+      dispatch(setSwapsSTXSubmitLoading(false));
       const {
         swaps: { isFeatureFlagLoaded },
       } = getState();
@@ -1018,8 +1075,8 @@ export const signAndSendTransactions = (
     try {
       const swapsFeatureFlags = await fetchSwapsFeatureFlags();
       swapsLivenessForNetwork = getSwapsLivenessForNetwork(
-        swapsFeatureFlags,
         chainId,
+        swapsFeatureFlags,
       );
     } catch (error) {
       log.error('Failed to fetch Swaps liveness, defaulting to false.', error);
@@ -1032,8 +1089,6 @@ export const signAndSendTransactions = (
     }
 
     const customSwapsGas = getCustomSwapsGas(state);
-    const customMaxFeePerGas = getCustomMaxFeePerGas(state);
-    const customMaxPriorityFeePerGas = getCustomMaxPriorityFeePerGas(state);
     const fetchParams = getFetchParams(state);
     const { metaData, value: swapTokenValue, slippage } = fetchParams;
     const { sourceTokenInfo = {}, destinationTokenInfo = {} } = metaData;
@@ -1046,79 +1101,95 @@ export const signAndSendTransactions = (
 
     const { fast: fastGasEstimate } = getSwapGasPriceEstimateData(state);
 
-    let maxFeePerGas;
-    let maxPriorityFeePerGas;
-    let baseAndPriorityFeePerGas;
-    let decEstimatedBaseFee;
-
-    if (networkAndAccountSupports1559) {
-      const {
-        high: { suggestedMaxFeePerGas, suggestedMaxPriorityFeePerGas },
-        estimatedBaseFee = '0',
-      } = getGasFeeEstimates(state);
-      decEstimatedBaseFee = decGWEIToHexWEI(estimatedBaseFee);
-      maxFeePerGas =
-        customMaxFeePerGas || decGWEIToHexWEI(suggestedMaxFeePerGas);
-      maxPriorityFeePerGas =
-        customMaxPriorityFeePerGas ||
-        decGWEIToHexWEI(suggestedMaxPriorityFeePerGas);
-      baseAndPriorityFeePerGas = addHexes(
-        decEstimatedBaseFee,
-        maxPriorityFeePerGas,
-      );
-    }
-
     const usedQuote = getUsedQuote(state);
     const usedTradeTxParams = usedQuote.trade;
+    const approveTxParams = getApproveTxParams(state);
 
-    const estimatedGasLimit = new BigNumber(
-      usedQuote?.gasEstimate || `0x0`,
-      16,
-    );
-    const estimatedGasLimitWithMultiplier = estimatedGasLimit
-      .times(usedQuote?.gasMultiplier || FALLBACK_GAS_MULTIPLIER, 10)
+    let transactionGasFeeEstimates;
+
+    if (networkAndAccountSupports1559) {
+      const networkGasFeeEstimates = getGasFeeEstimates(state);
+      const { estimatedBaseFee = '0' } = networkGasFeeEstimates;
+
+      transactionGasFeeEstimates = await getSwap1559GasFeeEstimates(
+        usedQuote.trade,
+        approveTxParams,
+        estimatedBaseFee,
+        chainId,
+      );
+
+      debugLog('Received 1559 gas fee estimates', transactionGasFeeEstimates);
+    }
+
+    const tradeGasFeeEstimates =
+      transactionGasFeeEstimates?.tradeGasFeeEstimates;
+
+    const approveGasFeeEstimates =
+      transactionGasFeeEstimates?.approveGasFeeEstimates;
+
+    const estimatedGasLimit = new BigNumber(usedQuote?.gasEstimate || 0, 16)
       .round(0)
       .toString(16);
-    const maxGasLimit =
-      customSwapsGas ||
-      (usedQuote?.gasEstimate
-        ? estimatedGasLimitWithMultiplier
-        : `0x${decimalToHex(usedQuote?.maxGas || 0)}`);
+
+    const maxGasLimit = calculateMaxGasLimit(
+      usedQuote?.gasEstimate,
+      usedQuote?.gasMultiplier,
+      usedQuote?.maxGas,
+      customSwapsGas,
+    );
 
     const usedGasPrice = getUsedSwapsGasPrice(state);
     usedTradeTxParams.gas = maxGasLimit;
+
     if (networkAndAccountSupports1559) {
-      usedTradeTxParams.maxFeePerGas = maxFeePerGas;
-      usedTradeTxParams.maxPriorityFeePerGas = maxPriorityFeePerGas;
+      usedTradeTxParams.maxFeePerGas = tradeGasFeeEstimates?.maxFeePerGas;
+      usedTradeTxParams.maxPriorityFeePerGas =
+        tradeGasFeeEstimates?.maxPriorityFeePerGas;
       delete usedTradeTxParams.gasPrice;
     } else {
       usedTradeTxParams.gasPrice = usedGasPrice;
     }
 
     const usdConversionRate = getUSDConversionRate(state);
+
     const destinationValue = calcTokenAmount(
       usedQuote.destinationAmount,
       destinationTokenInfo.decimals || 18,
     ).toPrecision(8);
+
     const usedGasLimitEstimate =
       usedQuote?.gasEstimateWithRefund ||
       `0x${decimalToHex(usedQuote?.averageGas || 0)}`;
-    const totalGasLimitEstimate = new BigNumber(usedGasLimitEstimate, 16)
-      .plus(usedQuote.approvalNeeded?.gas || '0x0', 16)
-      .toString(16);
+
+    const tradeTotalGasEstimate = calcGasTotal(
+      usedGasLimitEstimate,
+      networkAndAccountSupports1559
+        ? tradeGasFeeEstimates?.baseAndPriorityFeePerGas
+        : usedGasPrice,
+    );
+
+    const approvalGasLimitEstimate = usedQuote.approvalNeeded?.gas;
+
+    const approvalTotalGasEstimate = approvalGasLimitEstimate
+      ? calcGasTotal(
+          approvalGasLimitEstimate,
+          networkAndAccountSupports1559
+            ? approveGasFeeEstimates?.baseAndPriorityFeePerGas
+            : usedGasPrice,
+        )
+      : '0x0';
+
     const gasEstimateTotalInUSD = getValueFromWeiHex({
-      value: calcGasTotal(
-        totalGasLimitEstimate,
-        networkAndAccountSupports1559 ? baseAndPriorityFeePerGas : usedGasPrice,
-      ),
+      value: addHexes(tradeTotalGasEstimate, approvalTotalGasEstimate),
       toCurrency: 'usd',
       conversionRate: usdConversionRate,
       numberOfDecimals: 6,
     });
-    const smartTransactionsOptInStatus = getSmartTransactionsOptInStatus(state);
+
     const smartTransactionsEnabled = getSmartTransactionsEnabled(state);
     const currentSmartTransactionsEnabled =
       getCurrentSmartTransactionsEnabled(state);
+
     const swapMetaData = {
       token_from: sourceTokenInfo.symbol,
       token_from_amount: String(swapTokenValue),
@@ -1135,7 +1206,7 @@ export const signAndSendTransactions = (
           ? ''
           : usedQuote.aggregator,
       gas_fees: gasEstimateTotalInUSD,
-      estimated_gas: estimatedGasLimit.toString(10),
+      estimated_gas: new BigNumber(estimatedGasLimit, 16).toString(10),
       suggested_gas_price: fastGasEstimate,
       used_gas_price: hexWEIToDecGWEI(usedGasPrice),
       average_savings: usedQuote.savings?.total,
@@ -1146,18 +1217,21 @@ export const signAndSendTransactions = (
       hardware_wallet_type: getHardwareWalletType(state),
       stx_enabled: smartTransactionsEnabled,
       current_stx_enabled: currentSmartTransactionsEnabled,
-      stx_user_opt_in: smartTransactionsOptInStatus,
+      stx_user_opt_in: getSmartTransactionsOptInStatusForMetrics(state),
       ...additionalTrackingParams,
     };
+
     if (networkAndAccountSupports1559) {
-      swapMetaData.max_fee_per_gas = maxFeePerGas;
-      swapMetaData.max_priority_fee_per_gas = maxPriorityFeePerGas;
-      swapMetaData.base_and_priority_fee_per_gas = baseAndPriorityFeePerGas;
+      swapMetaData.max_fee_per_gas = tradeGasFeeEstimates?.maxFeePerGas;
+      swapMetaData.max_priority_fee_per_gas =
+        tradeGasFeeEstimates?.maxPriorityFeePerGas;
+      swapMetaData.base_and_priority_fee_per_gas =
+        tradeGasFeeEstimates?.baseAndPriorityFeePerGas;
     }
 
     trackEvent({
-      event: 'Swap Started',
-      category: EVENT.CATEGORIES.SWAPS,
+      event: MetaMetricsEventName.SwapStarted,
+      category: MetaMetricsEventCategory.Swaps,
       sensitiveProperties: swapMetaData,
     });
 
@@ -1175,7 +1249,6 @@ export const signAndSendTransactions = (
     }
 
     let finalApproveTxMeta;
-    const approveTxParams = getApproveTxParams(state);
 
     // For hardware wallets we go to the Awaiting Signatures page first and only after a user
     // completes 1 or 2 confirmations, we redirect to the Awaiting Swap page.
@@ -1185,70 +1258,78 @@ export const signAndSendTransactions = (
 
     if (approveTxParams) {
       if (networkAndAccountSupports1559) {
-        approveTxParams.maxFeePerGas = maxFeePerGas;
-        approveTxParams.maxPriorityFeePerGas = maxPriorityFeePerGas;
+        approveTxParams.maxFeePerGas = approveGasFeeEstimates?.maxFeePerGas;
+        approveTxParams.maxPriorityFeePerGas =
+          approveGasFeeEstimates?.maxPriorityFeePerGas;
         delete approveTxParams.gasPrice;
       }
-      const approveTxMeta = await addUnapprovedTransaction(
-        { ...approveTxParams, amount: '0x0' },
-        TRANSACTION_TYPES.SWAP_APPROVAL,
-      );
-      await dispatch(setApproveTxId(approveTxMeta.id));
-      finalApproveTxMeta = await dispatch(
-        updateSwapApprovalTransaction(approveTxMeta.id, {
-          type: TRANSACTION_TYPES.SWAP_APPROVAL,
-          sourceTokenSymbol: sourceTokenInfo.symbol,
-        }),
-      );
+
+      debugLog('Creating approve transaction', approveTxParams);
+
       try {
-        await dispatch(updateAndApproveTx(finalApproveTxMeta, true));
+        finalApproveTxMeta = await addTransactionAndWaitForPublish(
+          { ...approveTxParams, amount: '0x0' },
+          {
+            requireApproval: false,
+            type: TransactionType.swapApproval,
+            swaps: {
+              hasApproveTx: true,
+              meta: {
+                type: TransactionType.swapApproval,
+                sourceTokenSymbol: sourceTokenInfo.symbol,
+              },
+            },
+          },
+        );
+        if (
+          [
+            CHAIN_IDS.LINEA_MAINNET,
+            CHAIN_IDS.LINEA_GOERLI,
+            CHAIN_IDS.LINEA_SEPOLIA,
+          ].includes(chainId)
+        ) {
+          debugLog(
+            'Delaying submitting trade tx to make Linea confirmation more likely',
+          );
+          const waitPromise = new Promise((resolve) =>
+            setTimeout(resolve, 5000),
+          );
+          await waitPromise;
+        }
       } catch (e) {
+        debugLog('Approve transaction failed', e);
         await dispatch(setSwapsErrorKey(SWAP_FAILED_ERROR));
         history.push(SWAPS_ERROR_ROUTE);
         return;
       }
     }
 
-    const tradeTxMeta = await addUnapprovedTransaction(
-      usedTradeTxParams,
-      TRANSACTION_TYPES.SWAP,
-    );
-    dispatch(setTradeTxId(tradeTxMeta.id));
+    debugLog('Creating trade transaction', usedTradeTxParams);
 
-    // The simulationFails property is added during the transaction controllers
-    // addUnapprovedTransaction call if the estimateGas call fails. In cases
-    // when no approval is required, this indicates that the swap will likely
-    // fail. There was an earlier estimateGas call made by the swaps controller,
-    // but it is possible that external conditions have change since then, and
-    // a previously succeeding estimate gas call could now fail. By checking for
-    // the `simulationFails` property here, we can reduce the number of swap
-    // transactions that get published to the blockchain only to fail and thereby
-    // waste the user's funds on gas.
-    if (!approveTxParams && tradeTxMeta.simulationFails) {
-      await dispatch(cancelTx(tradeTxMeta, false));
-      await dispatch(setSwapsErrorKey(SWAP_FAILED_ERROR));
-      history.push(SWAPS_ERROR_ROUTE);
-      return;
-    }
-    const finalTradeTxMeta = await dispatch(
-      updateSwapTransaction(tradeTxMeta.id, {
-        estimatedBaseFee: decEstimatedBaseFee,
-        sourceTokenSymbol: sourceTokenInfo.symbol,
-        destinationTokenSymbol: destinationTokenInfo.symbol,
-        type: TRANSACTION_TYPES.SWAP,
-        destinationTokenDecimals: destinationTokenInfo.decimals,
-        destinationTokenAddress: destinationTokenInfo.address,
-        swapMetaData,
-        swapTokenValue,
-        approvalTxId: finalApproveTxMeta?.id,
-      }),
-    );
     try {
-      await dispatch(updateAndApproveTx(finalTradeTxMeta, true));
+      await addTransactionAndWaitForPublish(usedTradeTxParams, {
+        requireApproval: false,
+        type: TransactionType.swap,
+        swaps: {
+          hasApproveTx: Boolean(approveTxParams),
+          meta: {
+            estimatedBaseFee: transactionGasFeeEstimates?.estimatedBaseFee,
+            sourceTokenSymbol: sourceTokenInfo.symbol,
+            destinationTokenSymbol: destinationTokenInfo.symbol,
+            type: TransactionType.swap,
+            destinationTokenDecimals: destinationTokenInfo.decimals,
+            destinationTokenAddress: destinationTokenInfo.address,
+            swapMetaData,
+            swapTokenValue,
+            approvalTxId: finalApproveTxMeta?.id,
+          },
+        },
+      });
     } catch (e) {
       const errorKey = e.message.includes('EthAppPleaseEnableContractData')
         ? CONTRACT_DATA_DISABLED_ERROR
         : SWAP_FAILED_ERROR;
+      debugLog('Trade transaction failed', e);
       await dispatch(setSwapsErrorKey(errorKey));
       history.push(SWAPS_ERROR_ROUTE);
       return;
@@ -1325,7 +1406,7 @@ export function fetchSwapsSmartTransactionFees({
         const errorObj = parseSmartTransactionsError(e.message);
         if (
           fallbackOnNotEnoughFunds ||
-          errorObj?.error !== stxErrorTypes.NOT_ENOUGH_FUNDS
+          errorObj?.error !== StxErrorTypes.notEnoughFunds
         ) {
           dispatch(setCurrentSmartTransactionsError(errorObj?.error));
         }

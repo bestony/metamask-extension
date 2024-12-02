@@ -1,11 +1,12 @@
 import React from 'react';
-import { PRIMARY, SECONDARY, ETH } from '../../../helpers/constants/common';
+import { PRIMARY, SECONDARY } from '../../../helpers/constants/common';
 
+import { EtherDenomination } from '../../../../shared/constants/common';
 import UserPreferencedCurrencyDisplay from '.';
 
 export default {
   title: 'Components/App/UserPreferencedCurrencyDisplay',
-  id: __filename,
+
   argTypes: {
     className: {
       control: 'text',
@@ -34,9 +35,6 @@ export default {
     showEthLogo: {
       control: 'boolean',
     },
-    ethLogoHeight: {
-      control: 'number',
-    },
     type: {
       control: 'select',
       options: [PRIMARY, SECONDARY],
@@ -52,7 +50,7 @@ export default {
     },
   },
   args: {
-    type: ETH,
+    type: EtherDenomination.ETH,
   },
 };
 

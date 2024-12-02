@@ -1,3 +1,4 @@
+/* eslint-disable @metamask/design-tokens/color-no-hex*/
 import React from 'react';
 import { useI18nContext } from '../../../hooks/useI18nContext';
 
@@ -6,7 +7,7 @@ export default function OnboardingPinBillboard() {
 
   return (
     <svg
-      width="799"
+      width="100%"
       height="320"
       viewBox="0 0 799 320"
       fill="none"
@@ -32,7 +33,7 @@ export default function OnboardingPinBillboard() {
       <text
         fill="white"
         xmlSpace="preserve"
-        style={{ 'white-space': 'pre' }}
+        style={{ whiteSpace: 'pre' }}
         fontFamily="Euclid Circular A"
         fontSize="29"
         fontWeight="bold"
@@ -45,7 +46,7 @@ export default function OnboardingPinBillboard() {
       <text
         fill="var(--color-text-default)"
         xmlSpace="preserve"
-        style={{ 'white-space': 'pre' }}
+        style={{ whiteSpace: 'pre' }}
         fontFamily="Euclid Circular B"
         fontSize="18"
         letterSpacing="0em"
@@ -63,7 +64,7 @@ export default function OnboardingPinBillboard() {
       <text
         fill="white"
         xmlSpace="preserve"
-        style={{ 'white-space': 'pre' }}
+        style={{ whiteSpace: 'pre' }}
         fontFamily="Euclid Circular A"
         fontSize="29"
         fontWeight="bold"
@@ -76,7 +77,7 @@ export default function OnboardingPinBillboard() {
       <text
         fill="var(--color-text-default)"
         xmlSpace="preserve"
-        style={{ 'white-space': 'pre' }}
+        style={{ whiteSpace: 'pre' }}
         fontFamily="Euclid Circular B"
         fontSize="18"
         letterSpacing="0em"
@@ -103,7 +104,7 @@ export default function OnboardingPinBillboard() {
       </g>
       <mask
         id="mask0_2133:17259"
-        style={{ 'mask-type': 'alpha' }}
+        style={{ maskType: 'alpha' }}
         maskUnits="userSpaceOnUse"
         x="673"
         y="236"
@@ -129,7 +130,7 @@ export default function OnboardingPinBillboard() {
       <text
         fill="white"
         xmlSpace="preserve"
-        style={{ 'white-space': 'pre' }}
+        style={{ whiteSpace: 'pre' }}
         fontFamily="Open Sans"
         fontSize="12"
         fontWeight="600"
@@ -142,7 +143,7 @@ export default function OnboardingPinBillboard() {
       <text
         fill="white"
         xmlSpace="preserve"
-        style={{ 'white-space': 'pre' }}
+        style={{ whiteSpace: 'pre' }}
         fontFamily="Open Sans"
         fontSize="10"
         fontWeight="bold"
@@ -155,7 +156,7 @@ export default function OnboardingPinBillboard() {
       <text
         fill="white"
         xmlSpace="preserve"
-        style={{ 'white-space': 'pre' }}
+        style={{ whiteSpace: 'pre' }}
         fontFamily="Open Sans"
         fontSize="9"
         fontWeight="bold"
@@ -168,7 +169,7 @@ export default function OnboardingPinBillboard() {
       <text
         fill="white"
         xmlSpace="preserve"
-        style={{ 'white-space': 'pre' }}
+        style={{ whiteSpace: 'pre' }}
         fontFamily="Open Sans"
         fontSize="10"
         letterSpacing="-0.3px"

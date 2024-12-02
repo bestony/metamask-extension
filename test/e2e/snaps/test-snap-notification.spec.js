@@ -1,108 +1,127 @@
-const { strict: assert } = require('assert');
-const { withFixtures } = require('../helpers');
-const { PAGES } = require('../webdriver/driver');
+const {
+  defaultGanacheOptions,
+  withFixtures,
+  unlockWallet,
+  WINDOW_TITLES,
+} = require('../helpers');
+const FixtureBuilder = require('../fixture-builder');
 const { TEST_SNAPS_WEBSITE_URL } = require('./enums');
 
 describe('Test Snap Notification', function () {
-  it('can send 1 correctly read inapp notification', async function () {
-    const ganacheOptions = {
-      accounts: [
-        {
-          secretKey:
-            '0x7C9529A67102755B7E6102D6D950AC5D5863C98713805CEC576B945B15B71EAC',
-          balance: 25000000000000000000,
-        },
-      ],
-    };
+  it('can send 1 correctly read in-app notification', async function () {
     await withFixtures(
       {
-        fixtures: 'imported-account',
-        ganacheOptions,
-        title: this.test.title,
+        fixtures: new FixtureBuilder().build(),
+        ganacheOptions: defaultGanacheOptions,
+        title: this.test.fullTitle(),
       },
       async ({ driver }) => {
-        await driver.navigate();
-
-        // enter pw into extension
-        await driver.fill('#password', 'correct horse battery staple');
-        await driver.press('#password', driver.Key.ENTER);
+        await unlockWallet(driver);
 
         // navigate to test snaps page
-        await driver.driver.get(TEST_SNAPS_WEBSITE_URL);
-        await driver.delay(1000);
+        await driver.openNewPage(TEST_SNAPS_WEBSITE_URL);
 
-        // find and scroll down to snapId5
-        const snapButton = await driver.findElement('#snapId5');
+        // wait for page to load
+        await driver.waitForSelector({
+          text: 'Installed Snaps',
+          tag: 'h2',
+        });
+
+        // scroll to notifications snap
+        const snapButton = await driver.findElement('#connectnotifications');
         await driver.scrollToElement(snapButton);
-        await driver.delay(500);
-        await driver.fill('#snapId5', 'npm:@metamask/test-snap-notification');
 
-        // connect the snap
-        await driver.clickElement('#connectNotification');
+        // added delay for firefox (deflake)
+        await driver.delayFirefox(1000);
 
-        // switch to metamask extension and click connect
-        await driver.waitUntilXWindowHandles(2, 5000, 10000);
-        let windowHandles = await driver.getAllWindowHandles();
-        await driver.switchToWindowWithTitle(
-          'MetaMask Notification',
-          windowHandles,
-        );
-        await driver.clickElement(
-          {
-            text: 'Connect',
-            tag: 'button',
-          },
-          10000,
-        );
-        await driver.delay(2000);
+        // wait for and click connect
+        await driver.waitForSelector('#connectnotifications');
+        await driver.clickElement('#connectnotifications');
 
-        // approve install of snap
-        await driver.waitUntilXWindowHandles(2, 5000, 10000);
-        windowHandles = await driver.getAllWindowHandles();
-        await driver.switchToWindowWithTitle(
-          'MetaMask Notification',
-          windowHandles,
-        );
+        // switch to metamask extension
+        await driver.switchToWindowWithTitle(WINDOW_TITLES.Dialog);
+
+        // wait for and click connect
+        await driver.waitForSelector({
+          text: 'Connect',
+          tag: 'button',
+        });
         await driver.clickElement({
-          text: 'Approve & install',
+          text: 'Connect',
+          tag: 'button',
+        });
+
+        // wait for and click confirm
+        await driver.waitForSelector({ text: 'Confirm' });
+        await driver.clickElement({
+          text: 'Confirm',
+          tag: 'button',
+        });
+
+        // wait for and click ok and wait for window to cloe
+        await driver.waitForSelector({ text: 'OK' });
+        await driver.clickElementAndWaitForWindowToClose({
+          text: 'OK',
           tag: 'button',
         });
 
         // click send inputs on test snap page
-        await driver.waitUntilXWindowHandles(1, 5000, 10000);
-        windowHandles = await driver.getAllWindowHandles();
-        await driver.switchToWindowWithTitle('Test Snaps', windowHandles);
+        await driver.switchToWindowWithTitle(WINDOW_TITLES.TestSnaps);
+
+        // wait for npm installation success
+        await driver.waitForSelector({
+          css: '#connectnotifications',
+          text: 'Reconnect to Notifications Snap',
+        });
+
+        // click to send notification
         await driver.clickElement('#sendInAppNotification');
 
-        // try to go to the MM pages
-        await driver.navigate(PAGES.HOME);
-        await driver.delay(1500);
+        // switch back to the extension page
+        await driver.switchToWindowWithTitle(
+          WINDOW_TITLES.ExtensionInFullScreenView,
+        );
 
         // check to see that there is one notification
-        const notificationResult = await driver.findElement(
-          '.account-menu__icon__notification-count',
+        await driver.waitForSelector(
+          '[data-testid="account-options-menu-button"]',
         );
-        assert.equal(await notificationResult.getText(), '1');
+        await driver.clickElement(
+          '[data-testid="account-options-menu-button"]',
+        );
+        await driver.findElement({
+          css: '[data-testid="global-menu-notification-count"]',
+          text: '1',
+        });
+        // this click will close the menu
+        await driver.clickElement(
+          '[data-testid="account-options-menu-button"]',
+        );
 
         // try to click on the account menu icon (via xpath)
-        await driver.clickElement('.account-menu__icon');
-        await driver.delay(500);
+        await driver.clickElement(
+          '[data-testid="account-options-menu-button"]',
+        );
 
         // try to click on the notification item (via xpath)
-        await driver.clickElement({
-          text: 'Notifications',
-          tag: 'div',
+        await driver.waitForSelector({
+          text: 'Notifications 1',
+          css: '.menu-item',
         });
-        await driver.delay(500);
+        await driver.clickElement({
+          text: 'Notifications 1',
+          css: '.menu-item',
+        });
 
         // look for the correct text in notifications (via xpath)
-        const notificationResultMessage = await driver.findElement(
-          '.notifications__item__details__message',
-        );
-        assert.equal(
-          await notificationResultMessage.getText(),
-          'TEST INAPP NOTIFICATION',
-        );
+        await driver.waitForSelector({
+          css: '.snap-notifications__item__details__message',
+          text: 'Hello from within MetaMask!',
+        });
+        await driver.findElement({
+          css: '.snap-notifications__item__details__message',
+          text: 'Hello from within MetaMask!',
+        });
       },
     );
   });

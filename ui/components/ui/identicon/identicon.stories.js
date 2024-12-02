@@ -4,7 +4,7 @@ import Identicon from './identicon.component';
 
 export default {
   title: 'Components/UI/Identicon',
-  id: __filename,
+
   component: Identicon,
   parameters: {
     docs: {
@@ -22,6 +22,7 @@ export default {
     imageBorder: { control: 'boolean' },
     useTokenDetection: { control: 'boolean' },
     tokenList: { control: 'object' },
+    watchedNftContracts: { control: 'object' },
   },
 };
 

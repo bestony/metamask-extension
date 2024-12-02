@@ -1,58 +1,60 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { getPermissionDescription } from '../../../helpers/utils/permission';
+import { useSelector } from 'react-redux';
+import { getWeightedPermissions } from '../../../helpers/utils/permission';
 import { useI18nContext } from '../../../hooks/useI18nContext';
+import { getSnapsMetadata } from '../../../selectors';
+import { getSnapName } from '../../../helpers/utils/util';
+import PermissionCell from '../permission-cell';
+import { Box } from '../../component-library';
 
 /**
  * Get one or more permission descriptions for a permission name.
  *
- * @param t - The translation function.
- * @param permissionName - The name of the permission to request.
- * @param permissionValue - The value of the permission to request.
- * @returns {JSX.Element[]} An array of permission description nodes.
+ * @param permission - The permission to render.
+ * @param index - The index of the permission.
+ * @param accounts - An array representing list of accounts for which permission is used.
+ * @returns {JSX.Element} A permission description node.
  */
-function getDescriptionNodes(t, permissionName, permissionValue) {
-  const { label, leftIcon, rightIcon } = getPermissionDescription(
-    t,
-    permissionName,
-    permissionValue,
+function getDescriptionNode(permission, index, accounts) {
+  return (
+    <PermissionCell
+      permissionName={permission.name}
+      title={permission.label}
+      description={permission.description}
+      weight={permission.weight}
+      avatarIcon={permission.leftIcon}
+      key={`${permission.permissionName}-${index}`}
+      accounts={accounts}
+      permissionValue={permission.permissionValue.restrictNetworkSwitching}
+    />
   );
-
-  if (Array.isArray(label)) {
-    return label.map((labelValue, index) => (
-      <div className="permission" key={`${permissionName}-${index}`}>
-        <i className={leftIcon} />
-        {labelValue}
-        {rightIcon && <i className={rightIcon} />}
-      </div>
-    ));
-  }
-
-  return [
-    <div className="permission" key={permissionName}>
-      <i className={leftIcon} />
-      {label}
-      {rightIcon && <i className={rightIcon} />}
-    </div>,
-  ];
 }
 
-export default function PermissionsConnectPermissionList({ permissions }) {
+export default function PermissionsConnectPermissionList({
+  permissions,
+  subjectName,
+  accounts,
+}) {
   const t = useI18nContext();
+  const snapsMetadata = useSelector(getSnapsMetadata);
 
   return (
-    <div className="permissions-connect-permission-list">
-      {Object.entries(permissions).reduce(
-        (target, [permissionName, permissionValue]) =>
-          target.concat(
-            getDescriptionNodes(t, permissionName, permissionValue),
-          ),
-        [],
-      )}
-    </div>
+    <Box as="span">
+      {getWeightedPermissions({
+        t,
+        permissions,
+        getSubjectName: getSnapName(snapsMetadata),
+        subjectName,
+      }).map((permission, index) => {
+        return getDescriptionNode(permission, index, accounts);
+      })}
+    </Box>
   );
 }
 
 PermissionsConnectPermissionList.propTypes = {
   permissions: PropTypes.object.isRequired,
+  subjectName: PropTypes.string.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object),
 };

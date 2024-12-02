@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 
 import { useHistory } from 'react-router-dom';
@@ -7,21 +7,25 @@ import { I18nContext } from '../../../contexts/i18n';
 import { Menu, MenuItem } from '../../../components/ui/menu';
 import { getBlockExplorerLinkText } from '../../../selectors';
 import { NETWORKS_ROUTE } from '../../../helpers/constants/routes';
+import {
+  ButtonIcon,
+  ButtonIconSize,
+  IconName,
+} from '../../../components/component-library';
+import { Color } from '../../../helpers/constants/design-system';
 
 const AssetOptions = ({
   onRemove,
   onClickBlockExplorer,
-  onViewAccountDetails,
   onViewTokenDetails,
   tokenSymbol,
   isNativeAsset,
 }) => {
   const t = useContext(I18nContext);
-  const [assetOptionsButtonElement, setAssetOptionsButtonElement] =
-    useState(null);
   const [assetOptionsOpen, setAssetOptionsOpen] = useState(false);
   const history = useHistory();
   const blockExplorerLinkText = useSelector(getBlockExplorerLinkText);
+  const ref = useRef(false);
 
   const routeToAddBlockExplorerUrl = () => {
     history.push(`${NETWORKS_ROUTE}#blockExplorerUrl`);
@@ -33,31 +37,23 @@ const AssetOptions = ({
   };
 
   return (
-    <>
-      <button
-        className="fas fa-ellipsis-v asset-options__button"
+    <div ref={ref}>
+      <ButtonIcon
+        className="asset-options__button"
         data-testid="asset-options__button"
         onClick={() => setAssetOptionsOpen(true)}
-        ref={setAssetOptionsButtonElement}
-        title={t('assetOptions')}
+        ariaLabel={t('assetOptions')}
+        iconName={IconName.MoreVertical}
+        color={Color.textDefault}
+        size={ButtonIconSize.Sm}
       />
       {assetOptionsOpen ? (
         <Menu
-          anchorElement={assetOptionsButtonElement}
+          anchorElement={ref.current}
           onHide={() => setAssetOptionsOpen(false)}
         >
           <MenuItem
-            iconClassName="fas fa-qrcode"
-            data-testid="asset-options__account-details"
-            onClick={() => {
-              setAssetOptionsOpen(false);
-              onViewAccountDetails();
-            }}
-          >
-            {t('accountDetails')}
-          </MenuItem>
-          <MenuItem
-            iconClassName="fas fa-external-link-alt asset-options__icon"
+            iconName={IconName.Export}
             data-testid="asset-options__etherscan"
             onClick={
               blockExplorerLinkText.firstPart === 'addBlockExplorer'
@@ -74,7 +70,7 @@ const AssetOptions = ({
           </MenuItem>
           {isNativeAsset ? null : (
             <MenuItem
-              iconClassName="fas fa-trash-alt asset-options__icon"
+              iconName={IconName.Trash}
               data-testid="asset-options__hide"
               onClick={() => {
                 setAssetOptionsOpen(false);
@@ -84,9 +80,9 @@ const AssetOptions = ({
               {t('hideTokenSymbol', [tokenSymbol])}
             </MenuItem>
           )}
-          {isNativeAsset ? null : (
+          {isNativeAsset || !onViewTokenDetails ? null : (
             <MenuItem
-              iconClassName="fas fa-info-circle asset-options__icon"
+              iconName={IconName.Info}
               data-testid="asset-options__token-details"
               onClick={() => {
                 setAssetOptionsOpen(false);
@@ -98,7 +94,7 @@ const AssetOptions = ({
           )}
         </Menu>
       ) : null}
-    </>
+    </div>
   );
 };
 
@@ -109,7 +105,6 @@ const isNotFunc = (p) => {
 AssetOptions.propTypes = {
   isNativeAsset: PropTypes.bool,
   onClickBlockExplorer: PropTypes.func.isRequired,
-  onViewAccountDetails: PropTypes.func.isRequired,
   onRemove: (props) => {
     if (props.isNativeAsset === false && isNotFunc(props.onRemove)) {
       throw new Error(
@@ -117,13 +112,7 @@ AssetOptions.propTypes = {
       );
     }
   },
-  onViewTokenDetails: (props) => {
-    if (props.isNativeAsset === false && isNotFunc(props.onViewTokenDetails)) {
-      throw new Error(
-        'When isNativeAsset is true, onViewTokenDetails is a required prop',
-      );
-    }
-  },
+  onViewTokenDetails: PropTypes.func,
   tokenSymbol: (props) => {
     if (
       props.isNativeAsset === false &&

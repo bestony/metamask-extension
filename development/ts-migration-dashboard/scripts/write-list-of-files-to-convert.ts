@@ -1,12 +1,12 @@
 import path from 'path';
 import fs from 'fs';
 import fg from 'fast-glob';
-import madge from 'madge';
+import madge from '@lgbot/madge';
 import {
-  BASE_DIRECTORY,
+  ROOT_DIRECTORY_PATH,
   ENTRYPOINT_PATTERNS,
   FILES_TO_CONVERT_PATH,
-} from './constants';
+} from '../common/constants';
 
 main().catch((error) => {
   console.error(error);
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
     await Promise.all(
       ENTRYPOINT_PATTERNS.map((entrypointPattern) => {
         return fg(
-          path.resolve(BASE_DIRECTORY, `${entrypointPattern}.{js,ts,tsx}`),
+          path.resolve(ROOT_DIRECTORY_PATH, `${entrypointPattern}.{js,ts,tsx}`),
         );
       }),
     )
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     `Traversing dependency trees for ${entrypoints.length} entrypoints, please wait...`,
   );
   const result = await madge(entrypoints, {
-    baseDir: BASE_DIRECTORY,
+    baseDir: ROOT_DIRECTORY_PATH,
   });
   const dependenciesByFilePath = result.obj();
   const sortedFilePaths = Object.keys(dependenciesByFilePath)

@@ -3,7 +3,7 @@ import Spinner from '.';
 
 export default {
   title: 'Components/UI/Spinner',
-  id: __filename,
+
   argTypes: {
     className: {
       control: 'text',
@@ -13,7 +13,7 @@ export default {
     },
   },
   args: {
-    color: 'var(--color-warning-default)',
+    color: 'var(--color-icon-muted)',
   },
 };
 

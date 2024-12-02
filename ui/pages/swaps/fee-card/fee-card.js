@@ -1,28 +1,24 @@
 import React, { useContext } from 'react';
+import { useSelector } from 'react-redux';
 import PropTypes from 'prop-types';
+import ZENDESK_URLS from '../../../helpers/constants/zendesk-url';
 import { I18nContext } from '../../../contexts/i18n';
 import InfoTooltip from '../../../components/ui/info-tooltip';
+import TransactionDetail from '../../confirmations/components/transaction-detail/transaction-detail.component';
+import TransactionDetailItem from '../../confirmations/components/transaction-detail-item/transaction-detail-item.component';
 import {
-  MAINNET_CHAIN_ID,
-  BSC_CHAIN_ID,
-  LOCALHOST_CHAIN_ID,
-  POLYGON_CHAIN_ID,
-  RINKEBY_CHAIN_ID,
-  AVALANCHE_CHAIN_ID,
-} from '../../../../shared/constants/network';
-import TransactionDetail from '../../../components/app/transaction-detail/transaction-detail.component';
-import TransactionDetailItem from '../../../components/app/transaction-detail-item/transaction-detail-item.component';
-import Typography from '../../../components/ui/typography';
-import {
-  COLORS,
-  TYPOGRAPHY,
-  FONT_WEIGHT,
+  TextColor,
+  TextVariant,
+  FontWeight,
 } from '../../../helpers/constants/design-system';
 import { MetaMetricsContext } from '../../../contexts/metametrics';
-import { EVENT } from '../../../../shared/constants/metametrics';
-
-const GAS_FEES_LEARN_MORE_URL =
-  'https://community.metamask.io/t/what-is-gas-why-do-transactions-take-so-long/3172';
+import { MetaMetricsEventCategory } from '../../../../shared/constants/metametrics';
+import { getUseCurrencyRateCheck } from '../../../selectors';
+import {
+  Text,
+  ButtonLink,
+  ButtonLinkSize,
+} from '../../../components/component-library';
 
 export default function FeeCard({
   primaryFee,
@@ -33,29 +29,10 @@ export default function FeeCard({
   metaMaskFee,
   numberOfQuotes,
   onQuotesClick,
-  chainId,
-  isBestQuote,
 }) {
   const t = useContext(I18nContext);
+  const useCurrencyRateCheck = useSelector(getUseCurrencyRateCheck);
 
-  const getTranslatedNetworkName = () => {
-    switch (chainId) {
-      case MAINNET_CHAIN_ID:
-        return t('networkNameEthereum');
-      case BSC_CHAIN_ID:
-        return t('networkNameBSC');
-      case POLYGON_CHAIN_ID:
-        return t('networkNamePolygon');
-      case LOCALHOST_CHAIN_ID:
-        return t('networkNameTestnet');
-      case RINKEBY_CHAIN_ID:
-        return t('networkNameRinkeby');
-      case AVALANCHE_CHAIN_ID:
-        return t('networkNameAvalanche');
-      default:
-        throw new Error('This network is not supported for token swaps');
-    }
-  };
   const trackEvent = useContext(MetaMetricsContext);
 
   const tokenApprovalTextComponent = (
@@ -71,41 +48,33 @@ export default function FeeCard({
           disableEditGasFeeButton
           rows={[
             <TransactionDetailItem
-              key="gas-item"
+              key="fee-card-gas-item"
               detailTitle={
                 <>
                   {t('transactionDetailGasHeading')}
                   <InfoTooltip
                     position="top"
                     contentText={
-                      <>
-                        <p className="fee-card__info-tooltip-paragraph">
-                          {t('swapGasFeesSummary', [
-                            getTranslatedNetworkName(),
-                          ])}
-                        </p>
-                        <p className="fee-card__info-tooltip-paragraph">
-                          {t('swapGasFeesDetails')}
-                        </p>
-                        <p className="fee-card__info-tooltip-paragraph">
-                          <a
-                            className="fee-card__link"
+                      <p className="fee-card__info-tooltip-paragraph">
+                        {t('swapGasFeesExplanation', [
+                          <ButtonLink
+                            size={ButtonLinkSize.Inherit}
+                            href={ZENDESK_URLS.GAS_FEES}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            externalLink
+                            key="gas-fees-learn-more"
                             onClick={() => {
                               trackEvent({
                                 event: 'Clicked "Gas Fees: Learn More" Link',
-                                category: EVENT.CATEGORIES.SWAPS,
-                              });
-                              global.platform.openTab({
-                                url: GAS_FEES_LEARN_MORE_URL,
+                                category: MetaMetricsEventCategory.Swaps,
                               });
                             }}
-                            target="_blank"
-                            rel="noopener noreferrer"
                           >
-                            {t('swapGasFeesLearnMore')}
-                          </a>
-                        </p>
-                      </>
+                            {t('swapGasFeesExplanationLinkText')}
+                          </ButtonLink>,
+                        ])}
+                      </p>
                     }
                     containerClassName="fee-card__info-tooltip-content-container"
                     wrapperClassName="fee-card__row-label fee-card__info-tooltip-container"
@@ -113,19 +82,22 @@ export default function FeeCard({
                 </>
               }
               detailText={primaryFee.fee}
-              detailTotal={secondaryFee.fee}
+              detailTotal={useCurrencyRateCheck && secondaryFee.fee}
               subText={
-                secondaryFee?.maxFee !== undefined && (
+                (secondaryFee?.maxFee !== undefined ||
+                  primaryFee?.maxFee !== undefined) && (
                   <>
-                    <Typography
+                    <Text
                       as="span"
-                      fontWeight={FONT_WEIGHT.BOLD}
-                      color={COLORS.TEXT_ALTERNATIVE}
-                      variant={TYPOGRAPHY.H7}
+                      fontWeight={FontWeight.Bold}
+                      color={TextColor.textAlternative}
+                      variant={TextVariant.bodySm}
                     >
                       {t('maxFee')}
-                    </Typography>
-                    {`: ${secondaryFee.maxFee}`}
+                    </Text>
+                    {useCurrencyRateCheck
+                      ? `: ${secondaryFee.maxFee}`
+                      : `: ${primaryFee.maxFee}`}
                   </>
                 )
               }
@@ -162,9 +134,7 @@ export default function FeeCard({
                   onClick={onQuotesClick}
                   className="fee-card__quote-link-text"
                 >
-                  {isBestQuote
-                    ? t('swapBestOfNQuotes', [numberOfQuotes])
-                    : t('swapNQuotesWithDot', [numberOfQuotes])}
+                  {t('swapNQuotesWithDot', [numberOfQuotes])}
                 </span>
               )}
               {t('swapIncludesMMFee', [metaMaskFee])}
@@ -196,6 +166,4 @@ FeeCard.propTypes = {
   metaMaskFee: PropTypes.string.isRequired,
   onQuotesClick: PropTypes.func.isRequired,
   numberOfQuotes: PropTypes.number.isRequired,
-  chainId: PropTypes.string.isRequired,
-  isBestQuote: PropTypes.bool.isRequired,
 };

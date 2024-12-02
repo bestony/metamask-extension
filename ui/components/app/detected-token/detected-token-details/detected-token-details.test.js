@@ -80,14 +80,14 @@ describe('DetectedTokenDetails', () => {
     expect(screen.getByText('0 SNX')).toBeInTheDocument();
     expect(screen.getByText('$0')).toBeInTheDocument();
     expect(screen.getByText('Token address:')).toBeInTheDocument();
-    expect(screen.getByText('0xc01...2a6f')).toBeInTheDocument();
+    expect(screen.getByText('0xc011a...f2a6f')).toBeInTheDocument();
     expect(screen.getByText('From token lists:')).toBeInTheDocument();
     expect(screen.getByText('Aave, Bancor')).toBeInTheDocument();
     expect(screen.getByText('+ 10 more')).toBeInTheDocument();
     fireEvent.click(screen.getByText('+ 10 more'));
     expect(
       screen.getByText(
-        'Aave, Bancor, CMC, Crypto.com, CoinGecko, 1Inch, Paraswap, PMM, Synthetix, Zapper, Zerion, 0x.',
+        'Aave, Bancor, CMC, Crypto.com, CoinGecko, 1inch, Paraswap, PMM, Synthetix, Zapper, Zerion, 0x.',
       ),
     ).toBeInTheDocument();
   });

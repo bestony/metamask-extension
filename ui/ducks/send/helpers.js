@@ -1,26 +1,39 @@
-import { addHexPrefix } from 'ethereumjs-util';
+import { addHexPrefix, toChecksumAddress } from 'ethereumjs-util';
 import abi from 'human-standard-token-abi';
+import BigNumber from 'bignumber.js';
+import { TransactionEnvelopeType } from '@metamask/transaction-controller';
+import { getErrorMessage } from '../../../shared/modules/error';
 import { GAS_LIMITS, MIN_GAS_LIMIT_HEX } from '../../../shared/constants/gas';
+import { calcTokenAmount } from '../../../shared/lib/transactions-controller-utils';
 import { CHAIN_ID_TO_GAS_LIMIT_BUFFER_MAP } from '../../../shared/constants/network';
 import {
-  ASSET_TYPES,
-  TRANSACTION_ENVELOPE_TYPES,
+  AssetType,
+  TokenStandard,
 } from '../../../shared/constants/transaction';
 import { readAddressAsContract } from '../../../shared/modules/contract-utils';
-import {
-  conversionUtil,
-  multiplyCurrencies,
-} from '../../../shared/modules/conversion.utils';
-import { ETH, GWEI } from '../../helpers/constants/common';
-import { calcTokenAmount } from '../../helpers/utils/token-util';
 import {
   addGasBuffer,
   generateERC20TransferData,
   generateERC721TransferData,
+  generateERC1155TransferData,
   getAssetTransferData,
-} from '../../pages/send/send.utils';
-import { getGasPriceInHexWei } from '../../selectors';
+} from '../../pages/confirmations/send/send.utils';
+import { getCurrentChainId } from '../../../shared/modules/selectors/networks';
+import {
+  checkNetworkAndAccountSupports1559,
+  getConfirmationExchangeRates,
+  getGasPriceInHexWei,
+  getTokenExchangeRates,
+} from '../../selectors';
 import { estimateGas } from '../../store/actions';
+import { Numeric } from '../../../shared/modules/Numeric';
+import { getGasFeeEstimates, getNativeCurrency } from '../metamask/metamask';
+import { getUsedSwapsGasPrice } from '../swaps/swaps';
+import { fetchTokenExchangeRates } from '../../helpers/utils/util';
+import { hexToDecimal } from '../../../shared/modules/conversion.utils';
+import { EtherDenomination } from '../../../shared/constants/common';
+import { SWAPS_CHAINID_DEFAULT_TOKEN_MAP } from '../../../shared/constants/swaps';
+import { isEqualCaseInsensitive } from '../../../shared/modules/string-utils';
 
 export async function estimateGasLimitForSend({
   selectedAddress,
@@ -109,15 +122,10 @@ export async function estimateGasLimitForSend({
   if (!isSimpleSendOnNonStandardNetwork) {
     // If we do not yet have a gasLimit, we must call into our background
     // process to get an estimate for gasLimit based on known parameters.
-
-    paramsForGasEstimate.gas = addHexPrefix(
-      multiplyCurrencies(blockGasLimit, 0.95, {
-        multiplicandBase: 16,
-        multiplierBase: 10,
-        roundDown: '0',
-        toNumericBase: 'hex',
-      }),
-    );
+    paramsForGasEstimate.gas = new Numeric(blockGasLimit, 16)
+      .times(new Numeric(0.95, 10))
+      .round(0, BigNumber.ROUND_DOWN)
+      .toPrefixedHexString();
   }
 
   // The buffer multipler reduces transaction failures by ensuring that the
@@ -142,6 +150,7 @@ export async function estimateGasLimitForSend({
     // Call into the background process that will simulate transaction
     // execution on the node and return an estimate of gasLimit
     const estimatedGasLimit = await estimateGas(paramsForGasEstimate);
+
     const estimateWithBuffer = addGasBuffer(
       estimatedGasLimit,
       blockGasLimit,
@@ -149,13 +158,14 @@ export async function estimateGasLimitForSend({
     );
     return addHexPrefix(estimateWithBuffer);
   } catch (error) {
+    const errorMessage = getErrorMessage(error);
     const simulationFailed =
-      error.message.includes('Transaction execution error.') ||
-      error.message.includes(
+      errorMessage.includes('Transaction execution error.') ||
+      errorMessage.includes(
         'gas required exceeds allowance or always failing transaction',
       ) ||
       (CHAIN_ID_TO_GAS_LIMIT_BUFFER_MAP[chainId] &&
-        error.message.includes('gas required exceeds allowance'));
+        errorMessage.includes('gas required exceeds allowance'));
     if (simulationFailed) {
       const estimateWithBuffer = addGasBuffer(
         paramsForGasEstimate?.gas ?? gasLimit,
@@ -168,18 +178,126 @@ export async function estimateGasLimitForSend({
   }
 }
 
+export const addAdjustedReturnToQuotes = async (
+  quotes,
+  state,
+  destinationAsset,
+) => {
+  if (!quotes?.length) {
+    return quotes;
+  }
+
+  try {
+    const chainId = getCurrentChainId(state);
+
+    // get gas price
+    const { medium, gasPrice: maybeGasFee } = getGasFeeEstimates(state);
+    const networkAndAccountSupports1559 =
+      checkNetworkAndAccountSupports1559(state);
+    // remove this logic once getGasFeeEstimates is typed
+    const gasFee1559 = maybeGasFee ?? medium?.suggestedMaxFeePerGas;
+    const gasPriceNon1559 = getUsedSwapsGasPrice(state);
+    const gasPrice = networkAndAccountSupports1559
+      ? gasFee1559
+      : gasPriceNon1559;
+
+    // get exchange rates from state
+    const contractExchangeRates = getTokenExchangeRates(state);
+    const confirmationExchangeRates = getConfirmationExchangeRates(state);
+    const mergedRates = {
+      ...contractExchangeRates,
+      ...confirmationExchangeRates,
+    };
+
+    const nativeCurrency = getNativeCurrency(state);
+    const destinationAddress = destinationAsset?.address
+      ? toChecksumAddress(destinationAsset.address)
+      : undefined;
+
+    // attempt to get the conversion rate from the state; native currency is 1
+    let destToNativeConversionRate = destinationAddress
+      ? mergedRates[destinationAddress]
+      : 1;
+
+    // if conversion rate isn't already in the state, fetch it
+    if (!destToNativeConversionRate && destinationAddress) {
+      destToNativeConversionRate = (
+        await fetchTokenExchangeRates(
+          nativeCurrency,
+          [destinationAddress],
+          chainId,
+        )
+      )[destinationAddress];
+    }
+
+    // if conversion rate isn't available, do not update the property
+    if (!destToNativeConversionRate) {
+      return quotes;
+    }
+
+    return quotes.map((quote) => {
+      // get trade+approval
+      const totalGasLimit =
+        (quote?.gasParams.maxGas || 0) +
+        Number(hexToDecimal(quote?.approvalNeeded?.gas || '0x0'));
+
+      // get gas price in ETH (assuming mainnet for simplicity)
+      const gasPriceInNative = new Numeric(gasPrice, 10, EtherDenomination.GWEI)
+        .times(totalGasLimit, 10)
+        .toDenomination(EtherDenomination.ETH);
+
+      // convert token to ETH using conversion rate
+      const destTokenReceivedInNative = quote.destinationAmount
+        ? new Numeric(
+            calcTokenAmount(
+              quote.destinationAmount,
+              destinationAsset?.decimals ||
+                SWAPS_CHAINID_DEFAULT_TOKEN_MAP[chainId].decimals,
+            ),
+            10,
+          ).times(destToNativeConversionRate, 10)
+        : undefined;
+
+      // subtract gas ETH value from token ETH value
+      const adjustAmountReceivedInNative = destTokenReceivedInNative
+        .minus(gasPriceInNative)
+        .toNumber();
+
+      // add to quote
+      return { ...quote, adjustAmountReceivedInNative };
+    });
+  } catch (error) {
+    // no action is needed since we fallback from this property
+    console.warn(
+      `Could not calculate adjusted return for quote selection: ${error}`,
+    );
+  }
+  return quotes;
+};
+
+export const calculateBestQuote = (quotesArray) =>
+  quotesArray.reduce((best, current) => {
+    const currentValue =
+      current?.adjustAmountReceivedInNative ||
+      Number(current?.destinationAmount || 0);
+    const bestValue =
+      best?.adjustAmountReceivedInNative ||
+      Number(best?.destinationAmount || 0);
+
+    return currentValue > bestValue ? current : best;
+  }, quotesArray?.[0]);
+
 /**
  * Generates a txParams from the send slice.
  *
  * @param {import('.').SendState} sendState - the state of the send slice
- * @returns {import(
- *  '../../../shared/constants/transaction'
- * ).TxParams} A txParams object that can be used to create a transaction or
+ * @returns {import('@metamask/transaction-controller').TransactionParams} A txParams object that can be used to create a transaction or
  *  update an existing transaction.
  */
 export function generateTransactionParams(sendState) {
   const draftTransaction =
     sendState.draftTransactions[sendState.currentTransactionUUID];
+
   const txParams = {
     // If the fromAccount has been specified we use that, if not we use the
     // selected account.
@@ -190,50 +308,62 @@ export function generateTransactionParams(sendState) {
     // or the type of transaction.
     gas: draftTransaction.gas.gasLimit,
   };
-  switch (draftTransaction.asset.type) {
-    case ASSET_TYPES.TOKEN:
+
+  switch (draftTransaction.sendAsset.type) {
+    case AssetType.token:
       // When sending a token the to address is the contract address of
       // the token being sent. The value is set to '0x0' and the data
       // is generated from the recipient address, token being sent and
       // amount.
-      txParams.to = draftTransaction.asset.details.address;
+      txParams.to = draftTransaction.sendAsset.details.address;
       txParams.value = '0x0';
       txParams.data = generateERC20TransferData({
         toAddress: draftTransaction.recipient.address,
         amount: draftTransaction.amount.value,
-        sendToken: draftTransaction.asset.details,
+        sendToken: draftTransaction.sendAsset.details,
       });
       break;
-    case ASSET_TYPES.COLLECTIBLE:
+
+    case AssetType.NFT:
       // When sending a token the to address is the contract address of
       // the token being sent. The value is set to '0x0' and the data
       // is generated from the recipient address, token being sent and
       // amount.
-      txParams.to = draftTransaction.asset.details.address;
+      txParams.to = draftTransaction.sendAsset.details.address;
       txParams.value = '0x0';
-      txParams.data = generateERC721TransferData({
-        toAddress: draftTransaction.recipient.address,
-        fromAddress:
-          draftTransaction.fromAccount?.address ??
-          sendState.selectedAccount.address,
-        tokenId: draftTransaction.asset.details.tokenId,
-      });
+      txParams.data =
+        draftTransaction.sendAsset.details?.standard === TokenStandard.ERC721
+          ? generateERC721TransferData({
+              toAddress: draftTransaction.recipient.address,
+              fromAddress:
+                draftTransaction.fromAccount?.address ??
+                sendState.selectedAccount.address,
+              tokenId: draftTransaction.sendAsset.details.tokenId,
+            })
+          : generateERC1155TransferData({
+              toAddress: draftTransaction.recipient.address,
+              fromAddress:
+                draftTransaction.fromAccount?.address ??
+                sendState.selectedAccount.address,
+              tokenId: draftTransaction.sendAsset.details.tokenId,
+              amount: draftTransaction.amount.value,
+            });
       break;
-    case ASSET_TYPES.NATIVE:
+    case AssetType.native:
     default:
       // When sending native currency the to and value fields use the
       // recipient and amount values and the data key is either null or
       // populated with the user input provided in hex field.
       txParams.to = draftTransaction.recipient.address;
       txParams.value = draftTransaction.amount.value;
-      txParams.data = draftTransaction.userInputHexData ?? undefined;
+      txParams.data = draftTransaction.userInputHexData || '0x';
   }
 
   // We need to make sure that we only include the right gas fee fields
   // based on the type of transaction the network supports. We will also set
   // the type param here.
   if (sendState.eip1559support) {
-    txParams.type = TRANSACTION_ENVELOPE_TYPES.FEE_MARKET;
+    txParams.type = TransactionEnvelopeType.feeMarket;
 
     txParams.maxFeePerGas = draftTransaction.gas.maxFeePerGas;
     txParams.maxPriorityFeePerGas = draftTransaction.gas.maxPriorityFeePerGas;
@@ -250,7 +380,7 @@ export function generateTransactionParams(sendState) {
     }
   } else {
     txParams.gasPrice = draftTransaction.gas.gasPrice;
-    txParams.type = TRANSACTION_ENVELOPE_TYPES.LEGACY;
+    txParams.type = TransactionEnvelopeType.legacy;
   }
 
   return txParams;
@@ -268,14 +398,9 @@ export function generateTransactionParams(sendState) {
  * @returns {string}
  */
 export function getRoundedGasPrice(gasPriceEstimate) {
-  const gasPriceInDecGwei = conversionUtil(gasPriceEstimate, {
-    numberOfDecimals: 9,
-    toDenomination: GWEI,
-    fromNumericBase: 'dec',
-    toNumericBase: 'dec',
-    fromCurrency: ETH,
-    fromDenomination: GWEI,
-  });
+  const gasPriceInDecGwei = new Numeric(gasPriceEstimate, 10)
+    .round(9)
+    .toString();
   const gasPriceAsNumber = Number(gasPriceInDecGwei);
   return getGasPriceInHexWei(gasPriceAsNumber);
 }
@@ -291,4 +416,17 @@ export async function getERC20Balance(token, accountAddress) {
     token.decimals,
   ).toString(16);
   return addHexPrefix(amount);
+}
+
+/**
+ * returns if a given draft transaction is a swap and send
+ *
+ * @param {DraftTransaction} draftTransaction
+ * @returns {boolean} true if the draft transaction is a swap and send
+ */
+export function getIsDraftSwapAndSend(draftTransaction) {
+  return !isEqualCaseInsensitive(
+    draftTransaction?.sendAsset?.details?.address || '',
+    draftTransaction?.receiveAsset?.details?.address || '',
+  );
 }

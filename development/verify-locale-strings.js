@@ -174,12 +174,30 @@ async function verifyEnglishLocale() {
   // and gradually phase out the key based search
   const globsToStrictSearch = [
     'ui/components/app/metamask-translation/*.js',
+    'ui/components/app/metamask-translation/*.ts',
     'ui/pages/confirmation/templates/*.js',
+    'ui/pages/confirmation/templates/*.ts',
   ];
   const testGlob = '**/*.test.js';
-  const javascriptFiles = await glob(['ui/**/*.js', 'shared/**/*.js'], {
-    ignore: [...globsToStrictSearch, testGlob],
-  });
+  const javascriptFiles = await glob(
+    [
+      'ui/**/*.js',
+      'ui/**/*.ts',
+      'ui/**/*.tsx',
+      'shared/**/*.js',
+      'shared/**/*.ts',
+      'shared/**/*.tsx',
+      'app/scripts/lib/**/*.js',
+      'app/scripts/lib/**/*.ts',
+      'app/scripts/constants/**/*.js',
+      'app/scripts/constants/**/*.ts',
+      'app/scripts/platforms/**/*.js',
+      'app/scripts/controllers/**/*.ts',
+    ],
+    {
+      ignore: [...globsToStrictSearch, testGlob],
+    },
+  );
   const javascriptFilesToStrictSearch = await glob(globsToStrictSearch, {
     ignore: [testGlob],
   });
@@ -223,7 +241,10 @@ async function verifyEnglishLocale() {
     'appName',
     'appNameBeta',
     'appNameFlask',
+    'appNameMmi',
     'appDescription',
+    'rejected',
+    'signed',
   ];
 
   const englishMessages = Object.keys(englishLocale);

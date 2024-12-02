@@ -1,26 +1,29 @@
 import isEqual from 'lodash/isEqual';
-import { shallowEqual, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
+import { useEffect, useState } from 'react';
 import {
-  getEstimatedGasFeeTimeBounds,
-  getGasEstimateType,
-  getGasFeeEstimates,
-  getIsGasEstimatesLoading,
-  getIsNetworkBusy,
+  getGasEstimateTypeByChainId,
+  getGasFeeEstimatesByChainId,
+  getIsGasEstimatesLoadingByChainId,
+  getIsNetworkBusyByChainId,
 } from '../ducks/metamask/metamask';
-import { useSafeGasEstimatePolling } from './useSafeGasEstimatePolling';
+import {
+  gasFeeStartPollingByNetworkClientId,
+  gasFeeStopPollingByPollingToken,
+  getNetworkConfigurationByNetworkClientId,
+} from '../store/actions';
+import { getSelectedNetworkClientId } from '../../shared/modules/selectors/networks';
+import usePolling from './usePolling';
 
 /**
  * @typedef {object} GasEstimates
- * @property {GasEstimateTypes} gasEstimateType - The type of estimate provided
  * @property {import(
- *   '@metamask/controllers'
+ *   '@metamask/gas-fee-controller'
  * ).GasFeeState['gasFeeEstimates']} gasFeeEstimates - The estimate object
- * @property {import(
- *   '@metamask/controllers'
- * ).GasFeeState['estimatedGasFeeTimeBounds']} [estimatedGasFeeTimeBounds] -
- *  estimated time boundaries for fee-market type estimates
+ * @property {object} gasEstimateType - The type of estimate provided
  * @property {boolean} isGasEstimateLoading - indicates whether the gas
  *  estimates are currently loading.
+ * @property {boolean} isNetworkBusy - indicates whether the network is busy.
  */
 
 /**
@@ -29,23 +32,57 @@ import { useSafeGasEstimatePolling } from './useSafeGasEstimatePolling';
  * GasFeeController that it is done requiring new gas estimates. Also checks
  * the returned gas estimate for validity on the current network.
  *
- * @returns {GasFeeEstimates} GasFeeEstimates object
+ * @param _networkClientId - The optional network client ID to get gas fee estimates for. Defaults to the currently selected network.
+ * @returns {GasEstimates} GasEstimates object
  */
-export function useGasFeeEstimates() {
-  const gasEstimateType = useSelector(getGasEstimateType);
-  const gasFeeEstimates = useSelector(getGasFeeEstimates, isEqual);
-  const estimatedGasFeeTimeBounds = useSelector(
-    getEstimatedGasFeeTimeBounds,
-    shallowEqual,
+export function useGasFeeEstimates(_networkClientId) {
+  const selectedNetworkClientId = useSelector(getSelectedNetworkClientId);
+  const networkClientId = _networkClientId ?? selectedNetworkClientId;
+
+  const [chainId, setChainId] = useState('');
+
+  const gasEstimateType = useSelector((state) =>
+    getGasEstimateTypeByChainId(state, chainId),
   );
-  const isGasEstimatesLoading = useSelector(getIsGasEstimatesLoading);
-  const isNetworkBusy = useSelector(getIsNetworkBusy);
-  useSafeGasEstimatePolling();
+  const gasFeeEstimates = useSelector(
+    (state) => getGasFeeEstimatesByChainId(state, chainId),
+    isEqual,
+  );
+  const isGasEstimatesLoading = useSelector((state) =>
+    getIsGasEstimatesLoadingByChainId(state, {
+      chainId,
+      networkClientId,
+    }),
+  );
+  const isNetworkBusy = useSelector((state) =>
+    getIsNetworkBusyByChainId(state, chainId),
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    getNetworkConfigurationByNetworkClientId(networkClientId).then(
+      (networkConfig) => {
+        if (networkConfig && isMounted) {
+          setChainId(networkConfig.chainId);
+        }
+      },
+    );
+
+    return () => {
+      isMounted = false;
+    };
+  }, [networkClientId]);
+
+  usePolling({
+    startPolling: (input) =>
+      gasFeeStartPollingByNetworkClientId(input.networkClientId),
+    stopPollingByPollingToken: gasFeeStopPollingByPollingToken,
+    input: { networkClientId },
+  });
 
   return {
     gasFeeEstimates,
     gasEstimateType,
-    estimatedGasFeeTimeBounds,
     isGasEstimatesLoading,
     isNetworkBusy,
   };

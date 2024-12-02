@@ -1,31 +1,62 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-
-import Box from '../../../ui/box';
-import Identicon from '../../../ui/identicon';
+import { useSelector } from 'react-redux';
+import {
+  AvatarNetwork,
+  AvatarNetworkSize,
+  AvatarToken,
+  AvatarTokenSize,
+  BadgeWrapper,
+  Box,
+} from '../../../component-library';
 import DetectedTokenValues from '../detected-token-values/detected-token-values';
 import DetectedTokenAddress from '../detected-token-address/detected-token-address';
 import DetectedTokenAggregators from '../detected-token-aggregators/detected-token-aggregators';
-import { DISPLAY } from '../../../../helpers/constants/design-system';
+import { Display } from '../../../../helpers/constants/design-system';
+import {
+  getCurrentNetwork,
+  getTestNetworkBackgroundColor,
+  getTokenList,
+} from '../../../../selectors';
+import { CHAIN_ID_TO_NETWORK_IMAGE_URL_MAP } from '../../../../../shared/constants/network';
 
 const DetectedTokenDetails = ({
   token,
   handleTokenSelection,
   tokensListDetected,
+  chainId,
 }) => {
+  const tokenList = useSelector(getTokenList);
+  const tokenData = tokenList[token.address?.toLowerCase()];
+  const testNetworkBackgroundColor = useSelector(getTestNetworkBackgroundColor);
+  const currentNetwork = useSelector(getCurrentNetwork);
   return (
     <Box
-      display={DISPLAY.FLEX}
+      display={Display.Flex}
       className="detected-token-details"
       marginBottom={4}
     >
-      <Identicon
+      <BadgeWrapper
+        badge={
+          <AvatarNetwork
+            size={AvatarNetworkSize.Xs}
+            src={CHAIN_ID_TO_NETWORK_IMAGE_URL_MAP[chainId]}
+            name={currentNetwork?.nickname || ''}
+            backgroundColor={testNetworkBackgroundColor}
+          />
+        }
+        marginRight={2}
         className="detected-token-details__identicon"
-        address={token.address}
-        diameter={40}
-      />
+      >
+        <AvatarToken
+          name={token.symbol}
+          src={token.image}
+          size={AvatarTokenSize.Md}
+        />
+      </BadgeWrapper>
+
       <Box
-        display={DISPLAY.GRID}
+        display={Display.Grid}
         marginLeft={2}
         className="detected-token-details__data"
       >
@@ -35,7 +66,9 @@ const DetectedTokenDetails = ({
           tokensListDetected={tokensListDetected}
         />
         <DetectedTokenAddress tokenAddress={token.address} />
-        <DetectedTokenAggregators aggregators={token.aggregators} />
+        {tokenData?.aggregators.length > 0 && (
+          <DetectedTokenAggregators aggregators={tokenData?.aggregators} />
+        )}
       </Box>
     </Box>
   );
@@ -48,9 +81,11 @@ DetectedTokenDetails.propTypes = {
     symbol: PropTypes.string,
     iconUrl: PropTypes.string,
     aggregators: PropTypes.array,
+    image: PropTypes.string,
   }),
   handleTokenSelection: PropTypes.func.isRequired,
   tokensListDetected: PropTypes.object,
+  chainId: PropTypes.string,
 };
 
 export default DetectedTokenDetails;

@@ -4,35 +4,33 @@ import AdvancedTab from './advanced-tab.component';
 
 export default {
   title: 'Pages/Settings/AdvancedTab',
-  id: __filename,
+
   argTypes: {
     warning: { control: 'text' },
     useNonceField: { control: 'boolean' },
     sendHexData: { control: 'boolean' },
-    advancedInlineGas: { control: 'boolean' },
     showFiatInTestnets: { control: 'boolean' },
-    threeBoxSyncingAllowed: { control: 'boolean' },
-    threeBoxDisabled: { control: 'boolean' },
     useLedgerLive: { control: 'boolean' },
     dismissSeedBackUpReminder: { control: 'boolean' },
+    overrideContentSecurityPolicyHeader: { control: 'boolean' },
     setAutoLockTimeLimit: { action: 'setAutoLockTimeLimit' },
     setShowFiatConversionOnTestnetsPreference: {
       action: 'setShowFiatConversionOnTestnetsPreference',
     },
     setShowTestNetworks: { action: 'setShowTestNetworks' },
-    setThreeBoxSyncingPermission: { action: 'setThreeBoxSyncingPermission' },
     setIpfsGateway: { action: 'setIpfsGateway' },
-    setLedgerTransportPreference: { action: 'setLedgerTransportPreference' },
+    setIsIpfsGatewayEnabled: { action: 'setIsIpfsGatewayEnabled' },
     setDismissSeedBackUpReminder: { action: 'setDismissSeedBackUpReminder' },
+    setOverrideContentSecurityPolicyHeader: {
+      action: 'setOverrideContentSecurityPolicyHeader',
+    },
     setUseNonceField: { action: 'setUseNonceField' },
     setHexDataFeatureFlag: { action: 'setHexDataFeatureFlag' },
-    displayWarning: { action: 'displayWarning' },
+    displayErrorInSettings: { action: 'displayErrorInSettings' },
+    hideErrorInSettings: { action: 'hideErrorInSettings' },
     history: { action: 'history' },
     showResetAccountConfirmationModal: {
       action: 'showResetAccountConfirmationModal',
-    },
-    setAdvancedInlineGasFeatureFlag: {
-      action: 'setAdvancedInlineGasFeatureFlag',
     },
   },
 };
@@ -42,10 +40,9 @@ export const DefaultStory = (args) => {
     {
       useNonceField,
       sendHexData,
-      advancedInlineGas,
       showFiatInTestnets,
-      threeBoxSyncingAllowed,
       dismissSeedBackUpReminder,
+      overrideContentSecurityPolicyHeader,
     },
     updateArgs,
   ] = useArgs();
@@ -62,27 +59,21 @@ export const DefaultStory = (args) => {
     });
   };
 
-  const handleAdvancedInlineGas = () => {
-    updateArgs({
-      advancedInlineGas: !advancedInlineGas,
-    });
-  };
-
   const handleShowFiatInTestnets = () => {
     updateArgs({
       showFiatInTestnets: !showFiatInTestnets,
     });
   };
 
-  const handleThreeBoxSyncingAllowed = () => {
-    updateArgs({
-      threeBoxSyncingAllowed: !threeBoxSyncingAllowed,
-    });
-  };
-
   const handleDismissSeedBackUpReminder = () => {
     updateArgs({
       dismissSeedBackUpReminder: !dismissSeedBackUpReminder,
+    });
+  };
+
+  const handleOverrideContentSecurityPolicyHeader = () => {
+    updateArgs({
+      overrideContentSecurityPolicyHeader: !overrideContentSecurityPolicyHeader,
     });
   };
   return (
@@ -93,14 +84,16 @@ export const DefaultStory = (args) => {
         setUseNonceField={handleUseNonceField}
         sendHexData={sendHexData}
         setHexDataFeatureFlag={handleSendHexData}
-        advancedInlineGas={advancedInlineGas}
-        setAdvancedInlineGasFeatureFlag={handleAdvancedInlineGas}
         showFiatInTestnets={showFiatInTestnets}
         setShowFiatConversionOnTestnetsPreference={handleShowFiatInTestnets}
-        threeBoxSyncingAllowed={threeBoxSyncingAllowed}
-        setThreeBoxSyncingPermission={handleThreeBoxSyncingAllowed}
         dismissSeedBackUpReminder={dismissSeedBackUpReminder}
         setDismissSeedBackUpReminder={handleDismissSeedBackUpReminder}
+        overrideContentSecurityPolicyHeader={
+          overrideContentSecurityPolicyHeader
+        }
+        setOverrideContentSecurityPolicyHeader={
+          handleOverrideContentSecurityPolicyHeader
+        }
         ipfsGateway="ipfs-gateway"
       />
     </div>
@@ -112,10 +105,8 @@ DefaultStory.args = {
   warning: 'Warning Sample',
   useNonceField: false,
   sendHexData: false,
-  advancedInlineGas: false,
   showFiatInTestnets: false,
-  threeBoxSyncingAllowed: false,
-  threeBoxDisabled: false,
   useLedgerLive: false,
   dismissSeedBackUpReminder: false,
+  overrideContentSecurityPolicyHeader: true,
 };

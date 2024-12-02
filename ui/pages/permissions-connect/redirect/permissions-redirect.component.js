@@ -1,49 +1,132 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import SiteIcon from '../../../components/ui/site-icon';
-import Box from '../../../components/ui/box';
-import Typography from '../../../components/ui/typography/typography';
 import {
-  TYPOGRAPHY,
-  DISPLAY,
-  JUSTIFY_CONTENT,
-  ALIGN_ITEMS,
+  JustifyContent,
+  AlignItems,
+  Display,
+  TextVariant,
+  BlockSize,
+  FlexDirection,
+  BackgroundColor,
+  BorderRadius,
+  IconColor,
 } from '../../../helpers/constants/design-system';
 import { I18nContext } from '../../../contexts/i18n';
+import {
+  AvatarToken,
+  AvatarTokenSize,
+  Box,
+  Button,
+  ButtonSize,
+  ButtonVariant,
+  Icon,
+  IconName,
+  IconSize,
+  Text,
+} from '../../../components/component-library';
+import PermissionsConnectFooter from '../../../components/app/permissions-connect-footer';
 
 export default function PermissionsRedirect({ subjectMetadata }) {
   const t = useContext(I18nContext);
+  const [cachedSubjectMetadata, setCachedSubjectMetadata] =
+    useState(subjectMetadata);
+
+  // While this redirecting screen is showing, the subject metadata will become invalidated
+  // for that reason we cache the last seen valid subject metadata and show that.
+  useEffect(() => {
+    if (subjectMetadata && subjectMetadata.origin) {
+      setCachedSubjectMetadata(subjectMetadata);
+    }
+  }, [subjectMetadata]);
 
   return (
-    <div className="permissions-redirect">
-      <div className="permissions-redirect__result">
-        <Typography boxProps={{ marginBottom: 4 }} variant={TYPOGRAPHY.H3}>
-          {t('connecting')}
-        </Typography>
-        <div className="permissions-redirect__icons">
-          <SiteIcon
-            icon={subjectMetadata.iconUrl}
-            name={subjectMetadata.name}
-            size={64}
-            className="permissions-redirect__site-icon"
+    <Box
+      display={Display.Flex}
+      flexDirection={FlexDirection.Column}
+      width={BlockSize.Full}
+      height={BlockSize.Full}
+      justifyContent={JustifyContent.spaceBetween}
+    >
+      <Box
+        display={Display.Flex}
+        flexDirection={FlexDirection.Column}
+        alignItems={AlignItems.center}
+        justifyContent={JustifyContent.center}
+        width={BlockSize.Full}
+        height={BlockSize.Full}
+        backgroundColor={BackgroundColor.backgroundAlternative}
+      >
+        <Box display={Display.Flex} marginBottom={4}>
+          <Text variant={TextVariant.headingMd}>{t('connecting')}</Text>
+        </Box>
+        <Box
+          display={Display.Flex}
+          backgroundColor={BackgroundColor.infoMuted}
+          borderRadius={BorderRadius.pill}
+          padding={2}
+        >
+          <AvatarToken
+            src={cachedSubjectMetadata.iconUrl}
+            name={cachedSubjectMetadata.name}
+            size={AvatarTokenSize.Lg}
           />
           <Box
-            className="permissions-redirect__center-icon"
-            display={DISPLAY.FLEX}
-            alignItems={ALIGN_ITEMS.CENTER}
-            justifyContent={JUSTIFY_CONTENT.CENTER}
+            display={Display.Flex}
+            alignItems={AlignItems.center}
+            justifyContent={JustifyContent.center}
+            paddingLeft={4}
+            paddingRight={4}
           >
-            <i className="fa fa-check fa-lg permissions-redirect__check" />
-            <div className="permissions-redirect__dashed-line" />
+            <Icon
+              name={IconName.Confirmation}
+              size={IconSize.Xl}
+              color={IconColor.infoDefault}
+            />
           </Box>
-          <SiteIcon
-            icon="/images/logo/metamask-fox.svg"
-            size={64}
-            className="permissions-redirect__site-icon"
+          <AvatarToken
+            src="/images/logo/metamask-fox.svg"
+            size={AvatarTokenSize.Lg}
+            name="metamask-fox"
           />
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Box>
+      <Box backgroundColor={BackgroundColor.backgroundAlternative} padding={4}>
+        <Box display={Display.Flex} flexDirection={FlexDirection.Column}>
+          <PermissionsConnectFooter />
+          <Box
+            display={Display.Flex}
+            paddingTop={4}
+            width={BlockSize.Full}
+            justifyContent={JustifyContent.center}
+            alignItems={AlignItems.center}
+          >
+            <Button
+              variant={ButtonVariant.Secondary}
+              size={ButtonSize.Lg}
+              width={BlockSize.Full}
+              marginRight={2}
+              disabled
+            >
+              {t('back')}
+            </Button>
+            <Button
+              variant={ButtonVariant.Primary}
+              size={ButtonSize.Lg}
+              width={BlockSize.Full}
+              marginLeft={2}
+              disabled
+              loading
+            >
+              <Icon
+                name={IconName.Loading}
+                size={IconSize.Lg}
+                color={IconColor.infoDefault}
+              />
+            </Button>
+          </Box>
+        </Box>
+      </Box>
+    </Box>
   );
 }
 

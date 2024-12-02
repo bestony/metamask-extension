@@ -1,27 +1,34 @@
-import { endowmentPermissionBuilders } from '@metamask/snap-controllers';
-import { restrictedMethodPermissionBuilders } from '@metamask/rpc-methods';
+import {
+  restrictedMethodPermissionBuilders,
+  endowmentPermissionBuilders,
+} from '@metamask/snaps-rpc-methods';
 import {
   EndowmentPermissions,
-  ExcludedSnapPermissions,
+  ExcludedSnapEndowments,
   RestrictedMethods,
 } from './permissions';
 
 describe('EndowmentPermissions', () => {
   it('has the expected permission keys', () => {
     expect(Object.keys(EndowmentPermissions).sort()).toStrictEqual(
-      Object.keys(endowmentPermissionBuilders).sort(),
+      Object.keys(endowmentPermissionBuilders)
+        .filter(
+          (targetName) =>
+            !Object.keys(ExcludedSnapEndowments).includes(targetName),
+        )
+        .sort(),
     );
   });
 });
 
+// This test is flawed because it doesn't take fencing into consideration
+// TODO: Figure out a better way to test this
 describe('RestrictedMethods', () => {
   it('has the expected permission keys', () => {
     expect(Object.keys(RestrictedMethods).sort()).toStrictEqual(
       [
         'eth_accounts',
-        ...Object.keys(restrictedMethodPermissionBuilders).filter(
-          (targetKey) => !ExcludedSnapPermissions.has(targetKey),
-        ),
+        ...Object.keys(restrictedMethodPermissionBuilders),
       ].sort(),
     );
   });

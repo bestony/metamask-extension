@@ -3,12 +3,12 @@ import CurrencyInput from '.';
 
 export default {
   title: 'Components/App/CurrencyInput',
-  id: __filename,
+
   argTypes: {
     hexValue: {
       control: 'text',
     },
-    featureSecondary: {
+    isFiatPreferred: {
       control: 'boolean',
     },
     onChange: {

@@ -1,62 +1,51 @@
 module.exports = {
   collectCoverageFrom: [
-    '<rootDir>/app/scripts/controllers/permissions/**/*.js',
-    '<rootDir>/app/scripts/lib/createRPCMethodTrackingMiddleware.js',
-    '<rootDir>/shared/**/*.js',
-    '<rootDir>/ui/**/*.js',
+    '<rootDir>/app/scripts/**/*.(js|ts|tsx)',
+    '<rootDir>/shared/**/*.(js|ts|tsx)',
+    '<rootDir>/ui/**/*.(js|ts|tsx)',
+    '<rootDir>/development/build/transforms/**/*.js',
+    '<rootDir>/test/unit-global/**/*.test.(js|ts|tsx)',
   ],
-  coverageDirectory: './jest-coverage/main',
-  coveragePathIgnorePatterns: ['.stories.js', '.snap'],
-  coverageReporters: ['html', 'text-summary', 'json-summary'],
-  coverageThreshold: {
-    global: {
-      branches: 44,
-      functions: 42,
-      lines: 52,
-      statements: 52,
-    },
-    './app/scripts/controllers/permissions/**/*.js': {
-      branches: 100,
-      functions: 100,
-      lines: 100,
-      statements: 100,
-    },
-    './app/scripts/lib/createRPCMethodTrackingMiddleware.js': {
-      branches: 95.65,
-      functions: 100,
-      lines: 100,
-      statements: 100,
-    },
-  },
+  coverageDirectory: './coverage/unit',
+  coveragePathIgnorePatterns: ['.stories.*', '.snap'],
+  coverageReporters: ['html', 'json'],
+  reporters: [
+    'default',
+    [
+      'jest-junit',
+      {
+        outputDirectory: 'test/test-results/',
+        outputName: 'junit.xml',
+      },
+    ],
+  ],
   // TODO: enable resetMocks
   // resetMocks: true,
   restoreMocks: true,
-  setupFiles: ['<rootDir>/test/setup.js', '<rootDir>/test/env.js'],
+  setupFiles: [
+    'jest-canvas-mock',
+    '<rootDir>/test/setup.js',
+    '<rootDir>/test/env.js',
+  ],
   setupFilesAfterEnv: ['<rootDir>/test/jest/setup.js'],
   testMatch: [
-    '<rootDir>/ui/**/*.test.js',
-    '<rootDir>/shared/**/*.test.js',
-    '<rootDir>/app/scripts/lib/**/*.test.js',
-    '<rootDir>/app/scripts/migrations/*.test.js',
-    '<rootDir>/app/scripts/platforms/*.test.js',
-    '<rootDir>app/scripts/controllers/network/**/*.test.js',
-    '<rootDir>/app/scripts/controllers/permissions/**/*.test.js',
-    '<rootDir>/app/scripts/lib/createRPCMethodTrackingMiddleware.test.js',
+    '<rootDir>/app/scripts/**/*.test.(js|ts|tsx)',
+    '<rootDir>/shared/**/*.test.(js|ts|tsx)',
+    '<rootDir>/ui/**/*.test.(js|ts|tsx)',
+    '<rootDir>/development/**/*.test.(js|ts|tsx)',
+    '<rootDir>/test/unit-global/**/*.test.(js|ts|tsx)',
+    '<rootDir>/test/e2e/helpers.test.js',
+    '<rootDir>/test/e2e/helpers/**/*.test.(js|ts|tsx)',
   ],
-  testTimeout: 2500,
+  testPathIgnorePatterns: ['<rootDir>/development/webpack/'],
+  testTimeout: 5500,
   // We have to specify the environment we are running in, which is jsdom. The
   // default is 'node'. This can be modified *per file* using a comment at the
-  // head of the file. So it may be worth while to switch to 'node' in any
+  // head of the file. So it may be worthwhile to switch to 'node' in any
   // background tests.
   testEnvironment: 'jsdom',
-  // Our configuration somehow is calling into the esm folder / files of
-  // some modules. Jest supports ESM but our code is not set to emit ESM files
-  // so we are telling jest to use babel to transform the node_modules listed.
-  // Note: for some reason I could not hammer down to the node_modules
-  // installed in @metamask/controllers so I had to just blanket specify all
-  // of the @metamask/controllers folder.
-  transformIgnorePatterns: [
-    '/node_modules/(?!(multiformats|uuid|nanoid|@metamask/controllers|@metamask/snap-controllers)/)',
-  ],
+  testEnvironmentOptions: {
+    customExportConditions: ['node', 'node-addons'],
+  },
   workerIdleMemoryLimit: '500MB',
 };

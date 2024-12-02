@@ -3,24 +3,20 @@ import PropTypes from 'prop-types';
 import { useHistory } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import Modal from '../../modal';
-import Typography from '../../../ui/typography';
-import { TYPOGRAPHY } from '../../../../helpers/constants/design-system';
+import { Text } from '../../../component-library/text';
 import withModalProps from '../../../../helpers/higher-order-components/with-modal-props';
 import { useI18nContext } from '../../../../hooks/useI18nContext';
-import {
-  ADD_COLLECTIBLE_ROUTE,
-  ASSET_ROUTE,
-} from '../../../../helpers/constants/routes';
-import { getCollectibles } from '../../../../ducks/metamask/metamask';
-import { ignoreTokens } from '../../../../store/actions';
+import { ASSET_ROUTE } from '../../../../helpers/constants/routes';
+import { getNfts } from '../../../../ducks/metamask/metamask';
+import { ignoreTokens, showImportNftsModal } from '../../../../store/actions';
 import { isEqualCaseInsensitive } from '../../../../../shared/modules/string-utils';
 
 const ConvertTokenToNFTModal = ({ hideModal, tokenAddress }) => {
   const history = useHistory();
   const t = useI18nContext();
   const dispatch = useDispatch();
-  const allCollectibles = useSelector(getCollectibles);
-  const tokenAddedAsNFT = allCollectibles.find(({ address }) =>
+  const allNfts = useSelector(getNfts);
+  const tokenAddedAsNFT = allNfts.find(({ address }) =>
     isEqualCaseInsensitive(address, tokenAddress),
   );
 
@@ -39,10 +35,9 @@ const ConvertTokenToNFTModal = ({ hideModal, tokenAddress }) => {
             pathname: `${ASSET_ROUTE}/${tokenAddress}/${tokenId}`,
           });
         } else {
-          history.push({
-            pathname: ADD_COLLECTIBLE_ROUTE,
-            state: { tokenAddress },
-          });
+          dispatch(
+            showImportNftsModal({ tokenAddress, ignoreErc20Token: true }),
+          );
         }
         hideModal();
       }}
@@ -51,16 +46,11 @@ const ConvertTokenToNFTModal = ({ hideModal, tokenAddress }) => {
       cancelText={t('cancel')}
     >
       <div className="convert-token-to-nft-modal">
-        <Typography
-          variant={TYPOGRAPHY.H6}
-          boxProps={{
-            marginTop: 2,
-          }}
-        >
+        <Text marginTop={2}>
           {tokenAddedAsNFT
             ? t('convertTokenToNFTExistDescription')
             : t('convertTokenToNFTDescription')}
-        </Typography>
+        </Text>
       </div>
     </Modal>
   );

@@ -1,17 +1,13 @@
 import React from 'react';
-import configureMockStore from 'redux-mock-store';
-import thunk from 'redux-thunk';
 import { useSelector } from 'react-redux';
 
-import {
-  renderWithProvider,
-  createSwapsMockStore,
-  setBackgroundConnection,
-  MOCKS,
-} from '../../../../test/jest';
-import { MAINNET_CHAIN_ID } from '../../../../shared/constants/network';
+import { setBackgroundConnection } from '../../../store/background-connection';
+import { renderWithProvider, MOCKS, fireEvent } from '../../../../test/jest';
 
-import { checkNetworkAndAccountSupports1559 } from '../../../selectors';
+import {
+  checkNetworkAndAccountSupports1559,
+  getUseCurrencyRateCheck,
+} from '../../../selectors';
 import {
   getGasEstimateType,
   getGasFeeEstimates,
@@ -20,8 +16,6 @@ import {
 import { TRANSACTION_ENVELOPE_TYPE_NAMES } from '../../../helpers/constants/transactions';
 
 import FeeCard from '.';
-
-const middleware = [thunk];
 
 jest.mock('../../../hooks/useGasFeeEstimates', () => ({
   useGasFeeEstimates: jest.fn(),
@@ -49,12 +43,14 @@ const generateUseSelectorRouter = () => (selector) => {
   if (selector === getIsGasEstimatesLoading) {
     return false;
   }
+  if (selector === getUseCurrencyRateCheck) {
+    return true;
+  }
   return undefined;
 };
 
 setBackgroundConnection({
   getGasFeeTimeEstimate: jest.fn(),
-  getGasFeeEstimatesAndStartPolling: jest.fn(),
   createTransactionEventFragment: jest.fn(),
 });
 
@@ -82,9 +78,7 @@ const createProps = (customProps = {}) => {
     numberOfQuotes: 6,
     onQuotesClick: jest.fn(),
     tokenConversionRate: 0.015,
-    chainId: MAINNET_CHAIN_ID,
     networkAndAccountSupports1559: false,
-    supportsEIP1559V2: false,
     ...customProps,
   };
 };
@@ -94,7 +88,7 @@ describe('FeeCard', () => {
     useSelector.mockImplementation(generateUseSelectorRouter());
     const props = createProps();
     const { getByText } = renderWithProvider(<FeeCard {...props} />);
-    expect(getByText('Best of 6 quotes.')).toBeInTheDocument();
+    expect(getByText('6 quotes.')).toBeInTheDocument();
     expect(getByText('Estimated gas fee')).toBeInTheDocument();
     expect(getByText('Max fee')).toBeInTheDocument();
     expect(getByText(props.primaryFee.fee)).toBeInTheDocument();
@@ -104,17 +98,18 @@ describe('FeeCard', () => {
     expect(
       document.querySelector('.fee-card__top-bordered-row'),
     ).toMatchSnapshot();
+    expect(document.querySelector('.info-tooltip')).toMatchSnapshot();
+    expect(getByText('Edit limit')).toBeInTheDocument();
   });
 
   it('renders the component with EIP-1559 enabled', () => {
-    const store = configureMockStore(middleware)(createSwapsMockStore());
     const props = createProps({
       networkAndAccountSupports1559: true,
       maxPriorityFeePerGasDecGWEI: '3',
       maxFeePerGasDecGWEI: '4',
     });
-    const { getByText } = renderWithProvider(<FeeCard {...props} />, store);
-    expect(getByText('Best of 6 quotes.')).toBeInTheDocument();
+    const { getByText } = renderWithProvider(<FeeCard {...props} />);
+    expect(getByText('6 quotes.')).toBeInTheDocument();
     expect(getByText('Estimated gas fee')).toBeInTheDocument();
     expect(getByText('Max fee')).toBeInTheDocument();
     expect(getByText(props.primaryFee.fee)).toBeInTheDocument();
@@ -127,7 +122,6 @@ describe('FeeCard', () => {
   });
 
   it('renders the component with smart transactions enabled and user opted in', () => {
-    const store = configureMockStore(middleware)(createSwapsMockStore());
     const props = createProps({
       smartTransactionsOptInStatus: true,
       smartTransactionsEnabled: true,
@@ -136,13 +130,29 @@ describe('FeeCard', () => {
     });
     const { getByText, queryByTestId } = renderWithProvider(
       <FeeCard {...props} />,
-      store,
     );
-    expect(getByText('Best of 6 quotes.')).toBeInTheDocument();
+    expect(getByText('6 quotes.')).toBeInTheDocument();
     expect(getByText('Estimated gas fee')).toBeInTheDocument();
     expect(getByText(props.primaryFee.fee)).toBeInTheDocument();
     expect(getByText(props.secondaryFee.fee)).toBeInTheDocument();
     expect(getByText(`: ${props.secondaryFee.maxFee}`)).toBeInTheDocument();
     expect(queryByTestId('fee-card__edit-link')).not.toBeInTheDocument();
+  });
+
+  it('renders the component with hidden token approval row', () => {
+    const props = createProps({
+      hideTokenApprovalRow: true,
+    });
+    const { queryByText } = renderWithProvider(<FeeCard {...props} />);
+    expect(queryByText('Edit limit')).not.toBeInTheDocument();
+  });
+
+  it('approves a token', () => {
+    const props = createProps({
+      onTokenApprovalClick: jest.fn(),
+    });
+    const { queryByText } = renderWithProvider(<FeeCard {...props} />);
+    fireEvent.click(queryByText('Edit limit'));
+    expect(props.onTokenApprovalClick).toHaveBeenCalled();
   });
 });

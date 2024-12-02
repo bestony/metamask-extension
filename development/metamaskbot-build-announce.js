@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 const { promises: fs } = require('fs');
 const path = require('path');
 // Fetch is part of node js in future versions, thus triggering no-shadow
@@ -14,15 +15,44 @@ function capitalizeFirstLetter(string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
+function getHumanReadableSize(bytes) {
+  if (!bytes) {
+    return '0 Bytes';
+  }
+
+  const absBytes = Math.abs(bytes);
+  const kibibyteSize = 1024;
+  const magnitudes = ['Bytes', 'KiB', 'MiB'];
+  let magnitudeIndex = 0;
+  if (absBytes > Math.pow(kibibyteSize, 2)) {
+    magnitudeIndex = 2;
+  } else if (absBytes > kibibyteSize) {
+    magnitudeIndex = 1;
+  }
+  return `${parseFloat(
+    (bytes / Math.pow(kibibyteSize, magnitudeIndex)).toFixed(2),
+  )} ${magnitudes[magnitudeIndex]}`;
+}
+
+function getPercentageChange(from, to) {
+  return parseFloat(((to - from) / Math.abs(from)) * 100).toFixed(2);
+}
+
 async function start() {
-  const { GITHUB_COMMENT_TOKEN, CIRCLE_PULL_REQUEST } = process.env;
+  const {
+    GITHUB_COMMENT_TOKEN,
+    CIRCLE_PULL_REQUEST,
+    CIRCLE_SHA1,
+    CIRCLE_BUILD_NUM,
+    CIRCLE_WORKFLOW_JOB_ID,
+    PARENT_COMMIT,
+  } = process.env;
+
   console.log('CIRCLE_PULL_REQUEST', CIRCLE_PULL_REQUEST);
-  const { CIRCLE_SHA1 } = process.env;
   console.log('CIRCLE_SHA1', CIRCLE_SHA1);
-  const { CIRCLE_BUILD_NUM } = process.env;
   console.log('CIRCLE_BUILD_NUM', CIRCLE_BUILD_NUM);
-  const { CIRCLE_WORKFLOW_JOB_ID } = process.env;
   console.log('CIRCLE_WORKFLOW_JOB_ID', CIRCLE_WORKFLOW_JOB_ID);
+  console.log('PARENT_COMMIT', PARENT_COMMIT);
 
   if (!CIRCLE_PULL_REQUEST) {
     console.warn(`No pull request detected for commit "${CIRCLE_SHA1}"`);
@@ -32,26 +62,50 @@ async function start() {
   const CIRCLE_PR_NUMBER = CIRCLE_PULL_REQUEST.split('/').pop();
   const SHORT_SHA1 = CIRCLE_SHA1.slice(0, 7);
   const BUILD_LINK_BASE = `https://output.circle-artifacts.com/output/job/${CIRCLE_WORKFLOW_JOB_ID}/artifacts/0`;
-
   // build the github comment content
 
   // links to extension builds
-  const platforms = ['chrome', 'firefox', 'opera'];
+  const platforms = ['chrome', 'firefox'];
   const buildLinks = platforms
     .map((platform) => {
-      const url = `${BUILD_LINK_BASE}/builds/metamask-${platform}-${VERSION}.zip`;
+      const url =
+        platform === 'firefox'
+          ? `${BUILD_LINK_BASE}/builds-mv2/metamask-${platform}-${VERSION}.zip`
+          : `${BUILD_LINK_BASE}/builds/metamask-${platform}-${VERSION}.zip`;
       return `<a href="${url}">${platform}</a>`;
     })
     .join(', ');
-  const betaBuildLinks = platforms
-    .map((platform) => {
-      const url = `${BUILD_LINK_BASE}/builds-beta/metamask-beta-${platform}-${VERSION}.zip`;
-      return `<a href="${url}">${platform}</a>`;
-    })
-    .join(', ');
+  const betaBuildLinks = `<a href="${BUILD_LINK_BASE}/builds-beta/metamask-beta-chrome-${VERSION}.zip">chrome</a>`;
   const flaskBuildLinks = platforms
     .map((platform) => {
-      const url = `${BUILD_LINK_BASE}/builds-flask/metamask-flask-${platform}-${VERSION}.zip`;
+      const url =
+        platform === 'firefox'
+          ? `${BUILD_LINK_BASE}/builds-flask-mv2/metamask-flask-${platform}-${VERSION}-flask.0.zip`
+          : `${BUILD_LINK_BASE}/builds-flask/metamask-flask-${platform}-${VERSION}-flask.0.zip`;
+      return `<a href="${url}">${platform}</a>`;
+    })
+    .join(', ');
+  const mmiBuildLinks = platforms
+    .map((platform) => {
+      const url = `${BUILD_LINK_BASE}/builds-mmi/metamask-mmi-${platform}-${VERSION}-mmi.0.zip`;
+      return `<a href="${url}">${platform}</a>`;
+    })
+    .join(', ');
+  const testBuildLinks = platforms
+    .map((platform) => {
+      const url =
+        platform === 'firefox'
+          ? `${BUILD_LINK_BASE}/builds-test-mv2/metamask-${platform}-${VERSION}.zip`
+          : `${BUILD_LINK_BASE}/builds-test/metamask-${platform}-${VERSION}.zip`;
+      return `<a href="${url}">${platform}</a>`;
+    })
+    .join(', ');
+  const testFlaskBuildLinks = platforms
+    .map((platform) => {
+      const url =
+        platform === 'firefox'
+          ? `${BUILD_LINK_BASE}/builds-test-flask-mv2/metamask-flask-${platform}-${VERSION}-flask.0.zip`
+          : `${BUILD_LINK_BASE}/builds-test-flask/metamask-flask-${platform}-${VERSION}-flask.0.zip`;
       return `<a href="${url}">${platform}</a>`;
     })
     .join(', ');
@@ -87,6 +141,9 @@ async function start() {
     .map((key) => `<li>${key}: ${bundles[key].join(', ')}</li>`)
     .join('')}</ul>`;
 
+  const bundleSizeDataUrl =
+    'https://raw.githubusercontent.com/MetaMask/extension_bundlesize_stats/main/stats/bundle_size_data.json';
+
   const coverageUrl = `${BUILD_LINK_BASE}/coverage/index.html`;
   const coverageLink = `<a href="${coverageUrl}">Report</a>`;
 
@@ -99,13 +156,13 @@ async function start() {
   // links to bundle browser builds
   const depVizUrl = `${BUILD_LINK_BASE}/build-artifacts/build-viz/index.html`;
   const depVizLink = `<a href="${depVizUrl}">Build System</a>`;
-  const moduleInitStatsBackgroundUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/mv3/initialisation/background/index.html`;
+  const moduleInitStatsBackgroundUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/initialisation/background/index.html`;
   const moduleInitStatsBackgroundLink = `<a href="${moduleInitStatsBackgroundUrl}">Background Module Init Stats</a>`;
-  const moduleInitStatsUIUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/mv3/initialisation/ui/index.html`;
+  const moduleInitStatsUIUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/initialisation/ui/index.html`;
   const moduleInitStatsUILink = `<a href="${moduleInitStatsUIUrl}">UI Init Stats</a>`;
-  const moduleLoadStatsUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/mv3/load_time/index.html`;
+  const moduleLoadStatsUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/load_time/index.html`;
   const moduleLoadStatsLink = `<a href="${moduleLoadStatsUrl}">Module Load Stats</a>`;
-  const bundleSizeStatsUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/mv3/bundle_size.json`;
+  const bundleSizeStatsUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/bundle_size.json`;
   const bundleSizeStatsLink = `<a href="${bundleSizeStatsUrl}">Bundle Size Stats</a>`;
   const userActionsStatsUrl = `${BUILD_LINK_BASE}/test-artifacts/chrome/benchmark/user_actions.json`;
   const userActionsStatsLink = `<a href="${userActionsStatsUrl}">E2e Actions Stats</a>`;
@@ -117,6 +174,9 @@ async function start() {
     `builds: ${buildLinks}`,
     `builds (beta): ${betaBuildLinks}`,
     `builds (flask): ${flaskBuildLinks}`,
+    `builds (MMI): ${mmiBuildLinks}`,
+    `builds (test): ${testBuildLinks}`,
+    `builds (test-flask): ${testFlaskBuildLinks}`,
     `build viz: ${depVizLink}`,
     `mv3: ${moduleInitStatsBackgroundLink}`,
     `mv3: ${moduleInitStatsUILink}`,
@@ -241,6 +301,71 @@ async function start() {
     }
   } else {
     console.log(`No results for ${summaryPlatform} found; skipping benchmark`);
+  }
+
+  try {
+    const prBundleSizeStats = JSON.parse(
+      await fs.readFile(
+        path.resolve(
+          __dirname,
+          '..',
+          path.join('test-artifacts', 'chrome', 'bundle_size.json'),
+        ),
+        'utf-8',
+      ),
+    );
+
+    const devBundleSizeStats = await (
+      await fetch(bundleSizeDataUrl, {
+        method: 'GET',
+      })
+    ).json();
+
+    const prSizes = {
+      background: prBundleSizeStats.background.size,
+      ui: prBundleSizeStats.ui.size,
+      common: prBundleSizeStats.common.size,
+    };
+
+    const devSizes = Object.keys(prSizes).reduce((sizes, part) => {
+      sizes[part] = devBundleSizeStats[PARENT_COMMIT][part] || 0;
+      return sizes;
+    }, {});
+
+    const diffs = Object.keys(prSizes).reduce((output, part) => {
+      output[part] = prSizes[part] - devSizes[part];
+      return output;
+    }, {});
+
+    const sizeDiffRows = Object.keys(diffs).map(
+      (part) =>
+        `${part}: ${getHumanReadableSize(diffs[part])} (${getPercentageChange(
+          devSizes[part],
+          prSizes[part],
+        )}%)`,
+    );
+
+    const sizeDiffHiddenContent = `<ul>${sizeDiffRows
+      .map((row) => `<li>${row}</li>`)
+      .join('\n')}</ul>`;
+
+    const sizeDiff = diffs.background + diffs.common;
+
+    const sizeDiffWarning =
+      sizeDiff > 0
+        ? `🚨 Warning! Bundle size has increased!`
+        : `🚀 Bundle size reduced!`;
+
+    const sizeDiffExposedContent =
+      sizeDiff === 0
+        ? `Bundle size diffs`
+        : `Bundle size diffs [${sizeDiffWarning}]`;
+
+    const sizeDiffBody = `<details><summary>${sizeDiffExposedContent}</summary>${sizeDiffHiddenContent}</details>\n\n`;
+
+    commentBody += sizeDiffBody;
+  } catch (error) {
+    console.error(`Error constructing bundle size diffs results: '${error}'`);
   }
 
   try {

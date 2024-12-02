@@ -1,9 +1,9 @@
 import React from 'react';
 
 import Box from '../box';
-import Typography from '../typography';
+import { Text } from '../../component-library';
 import {
-  COLORS,
+  Color,
   DISPLAY,
   FLEX_WRAP,
 } from '../../../helpers/constants/design-system';
@@ -13,7 +13,7 @@ import ActionableMessage from '.';
 
 export default {
   title: 'Components/UI/ActionableMessage',
-  id: __filename,
+
   component: ActionableMessage,
   parameters: { docs: { page: README } },
   argTypes: {
@@ -130,20 +130,14 @@ export const OnTopOfContent = (args) => {
   return (
     <div>
       <Box display={DISPLAY.FLEX} gap={4} flexWrap={FLEX_WRAP.WRAP}>
-        <Box padding={6} backgroundColor={COLORS.BACKGROUND_ALTERNATIVE}>
-          <Typography>
-            Lorem ipsum dolor sit amet consectetur adipisicing elit.
-          </Typography>
+        <Box padding={6} backgroundColor={Color.backgroundAlternative}>
+          <Text>Lorem ipsum dolor sit amet consectetur adipisicing elit.</Text>
         </Box>
-        <Box padding={6} backgroundColor={COLORS.BACKGROUND_ALTERNATIVE}>
-          <Typography>
-            Lorem ipsum dolor sit amet consectetur adipisicing elit.
-          </Typography>
+        <Box padding={6} backgroundColor={Color.backgroundAlternative}>
+          <Text>Lorem ipsum dolor sit amet consectetur adipisicing elit.</Text>
         </Box>
-        <Box padding={6} backgroundColor={COLORS.BACKGROUND_ALTERNATIVE}>
-          <Typography>
-            Lorem ipsum dolor sit amet consectetur adipisicing elit.
-          </Typography>
+        <Box padding={6} backgroundColor={Color.backgroundAlternative}>
+          <Text>Lorem ipsum dolor sit amet consectetur adipisicing elit.</Text>
         </Box>
       </Box>
       <div style={{ position: 'absolute', top: 16, left: 16, right: 16 }}>

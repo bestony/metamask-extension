@@ -1,26 +1,58 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import Box from '../../../components/ui/box';
-import Typography from '../../../components/ui/typography';
+import { Box, Text } from '../../../components/component-library';
 import ToggleButton from '../../../components/ui/toggle-button';
 import {
-  JUSTIFY_CONTENT,
-  TYPOGRAPHY,
-  FONT_WEIGHT,
+  JustifyContent,
+  TextVariant,
+  AlignItems,
+  Display,
+  TextColor,
 } from '../../../helpers/constants/design-system';
+import { useI18nContext } from '../../../hooks/useI18nContext';
 
-export const Setting = ({ value, setValue, title, description }) => {
+export const Setting = ({
+  value,
+  setValue,
+  title,
+  description,
+  showToggle = true,
+  dataTestId,
+  disabled = false,
+}) => {
+  const t = useI18nContext();
+
   return (
-    <Box justifyContent={JUSTIFY_CONTENT.CENTER} margin={3}>
+    <Box
+      display={Display.Flex}
+      justifyContent={JustifyContent.spaceBetween}
+      alignItems={AlignItems.flexStart}
+      marginTop={3}
+      marginBottom={3}
+      className="privacy-settings__setting__wrapper"
+      data-testid={dataTestId}
+    >
       <div className="privacy-settings__setting">
-        <Typography variant={TYPOGRAPHY.H5} fontWeight={FONT_WEIGHT.BOLD}>
-          {title}
-        </Typography>
-        <Typography variant={TYPOGRAPHY.H6}>{description}</Typography>
+        <Text variant={TextVariant.bodyMdMedium}>{title}</Text>
+        <Text
+          variant={TextVariant.bodySm}
+          color={TextColor.textAlternative}
+          as="div"
+        >
+          {description}
+        </Text>
       </div>
-      <div className="privacy-settings__setting__toggle">
-        <ToggleButton value={value} onToggle={(val) => setValue(!val)} />
-      </div>
+      {showToggle ? (
+        <div className="privacy-settings__setting__toggle">
+          <ToggleButton
+            value={value}
+            onToggle={(val) => setValue(!val)}
+            offLabel={t('off')}
+            onLabel={t('on')}
+            disabled={disabled}
+          />
+        </div>
+      ) : null}
     </Box>
   );
 };
@@ -30,4 +62,7 @@ Setting.propTypes = {
   setValue: PropTypes.func,
   title: PropTypes.string,
   description: PropTypes.oneOfType([PropTypes.object, PropTypes.string]),
+  showToggle: PropTypes.bool,
+  dataTestId: PropTypes.string,
+  disabled: PropTypes.bool,
 };

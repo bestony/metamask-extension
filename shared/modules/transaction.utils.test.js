@@ -1,11 +1,14 @@
-import EthQuery from 'ethjs-query';
+import EthQuery from '@metamask/ethjs-query';
+import { TransactionType } from '@metamask/transaction-controller';
+
 import { createTestProviderTools } from '../../test/stub/provider';
-import { TRANSACTION_TYPES } from '../constants/transaction';
 import {
   determineTransactionType,
+  hasTransactionData,
   isEIP1559Transaction,
   isLegacyTransaction,
   parseStandardTokenTransactionData,
+  parseTypedDataMessage,
 } from './transaction.utils';
 
 describe('Transaction.utils', function () {
@@ -16,7 +19,7 @@ describe('Transaction.utils', function () {
       );
       expect(tokenData).toStrictEqual(expect.anything());
       const { name, args } = tokenData;
-      expect(name).toStrictEqual(TRANSACTION_TYPES.TOKEN_METHOD_TRANSFER);
+      expect(name).toStrictEqual(TransactionType.tokenMethodTransfer);
       const to = args._to;
       const value = args._value.toString();
       expect(to).toStrictEqual('0x50A9D56C2B8BA9A5c7f2C08C3d26E0499F23a706');
@@ -124,18 +127,18 @@ describe('Transaction.utils', function () {
 
       const result = await determineTransactionType(
         {
-          to: '0xabc',
+          to: '0xabcabcabcabcabcabcabcabcabcabcabcabcabca',
           data: '',
         },
         new EthQuery(_provider),
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.SIMPLE_SEND,
-        getCodeResponse: null,
+        type: TransactionType.simpleSend,
+        getCodeResponse: '0x',
       });
     });
 
-    it('should return a token transfer type when the recipient is a contract and data is for the respective method call', async function () {
+    it('should return a token transfer type when the recipient is a contract, there is no value passed, and data is for the respective method call', async function () {
       const _providerResultStub = {
         // 1 gwei
         eth_gasPrice: '0x0de0b6b3a7640000',
@@ -154,10 +157,66 @@ describe('Transaction.utils', function () {
         new EthQuery(_provider),
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.TOKEN_METHOD_TRANSFER,
+        type: TransactionType.tokenMethodTransfer,
         getCodeResponse: '0xab',
       });
     });
+
+    it(
+      'should NOT return a token transfer type and instead return contract interaction' +
+        ' when the recipient is a contract, the data matches the respective method call, but there is a value passed',
+      async function () {
+        const _providerResultStub = {
+          // 1 gwei
+          eth_gasPrice: '0x0de0b6b3a7640000',
+          // by default, all accounts are external accounts (not contracts)
+          eth_getCode: '0xab',
+        };
+        const _provider = createTestProviderTools({
+          scaffold: _providerResultStub,
+        }).provider;
+
+        const resultWithEmptyValue = await determineTransactionType(
+          {
+            value: '0x0',
+            to: '0x9e673399f795D01116e9A8B2dD2F156705131ee9',
+            data: '0xa9059cbb0000000000000000000000002f318C334780961FB129D2a6c30D0763d9a5C970000000000000000000000000000000000000000000000000000000000000000a',
+          },
+          new EthQuery(_provider),
+        );
+        expect(resultWithEmptyValue).toMatchObject({
+          type: TransactionType.tokenMethodTransfer,
+          getCodeResponse: '0xab',
+        });
+
+        const resultWithEmptyValue2 = await determineTransactionType(
+          {
+            value: '0x0000',
+            to: '0x9e673399f795D01116e9A8B2dD2F156705131ee9',
+            data: '0xa9059cbb0000000000000000000000002f318C334780961FB129D2a6c30D0763d9a5C970000000000000000000000000000000000000000000000000000000000000000a',
+          },
+          new EthQuery(_provider),
+        );
+
+        expect(resultWithEmptyValue2).toMatchObject({
+          type: TransactionType.tokenMethodTransfer,
+          getCodeResponse: '0xab',
+        });
+
+        const resultWithValue = await determineTransactionType(
+          {
+            value: '0x12345',
+            to: '0x9e673399f795D01116e9A8B2dD2F156705131ee9',
+            data: '0xa9059cbb0000000000000000000000002f318C334780961FB129D2a6c30D0763d9a5C970000000000000000000000000000000000000000000000000000000000000000a',
+          },
+          new EthQuery(_provider),
+        );
+        expect(resultWithValue).toMatchObject({
+          type: TransactionType.contractInteraction,
+          getCodeResponse: '0xab',
+        });
+      },
+    );
 
     it('should NOT return a token transfer type when the recipient is not a contract but the data matches the respective method call', async function () {
       const _providerResultStub = {
@@ -178,7 +237,7 @@ describe('Transaction.utils', function () {
         new EthQuery(_provider),
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.SIMPLE_SEND,
+        type: TransactionType.simpleSend,
         getCodeResponse: '0x',
       });
     });
@@ -202,7 +261,7 @@ describe('Transaction.utils', function () {
         new EthQuery(_provider),
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.TOKEN_METHOD_APPROVE,
+        type: TransactionType.tokenMethodApprove,
         getCodeResponse: '0xab',
       });
     });
@@ -216,7 +275,7 @@ describe('Transaction.utils', function () {
         query,
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.DEPLOY_CONTRACT,
+        type: TransactionType.deployContract,
         getCodeResponse: undefined,
       });
     });
@@ -230,7 +289,7 @@ describe('Transaction.utils', function () {
         query,
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.SIMPLE_SEND,
+        type: TransactionType.simpleSend,
         getCodeResponse: '0x',
       });
     });
@@ -254,7 +313,7 @@ describe('Transaction.utils', function () {
         new EthQuery(_provider),
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.SIMPLE_SEND,
+        type: TransactionType.simpleSend,
         getCodeResponse: null,
       });
     });
@@ -278,7 +337,7 @@ describe('Transaction.utils', function () {
         new EthQuery(_provider),
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.CONTRACT_INTERACTION,
+        type: TransactionType.contractInteraction,
         getCodeResponse: '0x0a',
       });
     });
@@ -302,9 +361,77 @@ describe('Transaction.utils', function () {
         new EthQuery(_provider),
       );
       expect(result).toMatchObject({
-        type: TRANSACTION_TYPES.CONTRACT_INTERACTION,
+        type: TransactionType.contractInteraction,
         getCodeResponse: '0x0a',
       });
     });
+
+    it('should return contractInteraction for send with approve', async function () {
+      const _providerResultStub = {
+        // 1 gwei
+        eth_gasPrice: '0x0de0b6b3a7640000',
+        // by default, all accounts are external accounts (not contracts)
+        eth_getCode: '0xa',
+      };
+      const _provider = createTestProviderTools({
+        scaffold: _providerResultStub,
+      }).provider;
+
+      const result = await determineTransactionType(
+        {
+          to: '0x9e673399f795D01116e9A8B2dD2F156705131ee9',
+          value: '0x5af3107a4000',
+          data: '0x095ea7b30000000000000000000000002f318C334780961FB129D2a6c30D0763d9a5C9700000000000000000000000000000000000000000000000000000000000000005',
+        },
+        new EthQuery(_provider),
+      );
+      expect(result).toMatchObject({
+        type: TransactionType.contractInteraction,
+        getCodeResponse: '0x0a',
+      });
+    });
+
+    describe('parseTypedDataMessage', () => {
+      it('parses data passed correctly', () => {
+        const result = parseTypedDataMessage('{"test": "dummy"}');
+        expect(result.test).toBe('dummy');
+      });
+
+      it('parses message.value as a string', () => {
+        const result = parseTypedDataMessage(
+          '{"test": "dummy", "message": { "value": 3000123} }',
+        );
+        expect(result.message.value).toBe('3000123');
+      });
+
+      it('parses message.value such that it does not lose precision', () => {
+        const result = parseTypedDataMessage(
+          '{"test": "dummy", "message": { "value": 30001231231212312138768} }',
+        );
+        expect(result.message.value).toBe('30001231231212312138768');
+      });
+
+      it('throw error for invalid typedDataMessage', () => {
+        expect(() => {
+          parseTypedDataMessage('');
+        }).toThrow(new Error('Unexpected end of JSON input'));
+      });
+    });
+  });
+
+  describe('hasTransactionData', () => {
+    it.each([
+      ['has prefix', '0x1234'],
+      ['has no prefix', '1234'],
+    ])('returns true if data %s', (_, data) => {
+      expect(hasTransactionData(data)).toBe(true);
+    });
+
+    it.each([undefined, null, '', '0x', '0X'])(
+      'returns false if data is %s',
+      (data) => {
+        expect(hasTransactionData(data)).toBe(false);
+      },
+    );
   });
 });

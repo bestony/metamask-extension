@@ -1,102 +1,110 @@
 import React, { useContext } from 'react';
 import PropTypes from 'prop-types';
-import Identicon from '../../ui/identicon/identicon.component';
+import IconWithFallback from '../../ui/icon-with-fallback';
+import Identicon from '../../ui/identicon';
 import {
-  DISPLAY,
-  FLEX_DIRECTION,
-  TYPOGRAPHY,
-  COLORS,
-  FONT_WEIGHT,
-  ALIGN_ITEMS,
-  JUSTIFY_CONTENT,
+  Display,
+  FlexDirection,
+  TextVariant,
+  FontWeight,
+  AlignItems,
+  JustifyContent,
+  TextAlign,
+  TextColor,
 } from '../../../helpers/constants/design-system';
 import Box from '../../ui/box/box';
 import { I18nContext } from '../../../contexts/i18n';
-import Typography from '../../ui/typography';
+import { CHAIN_ID_TO_NETWORK_IMAGE_URL_MAP } from '../../../../shared/constants/network';
+import { Text } from '../../component-library';
 
 export default function NetworkAccountBalanceHeader({
   networkName,
   accountName,
   accountBalance,
-  tokenName,
+  tokenName, // Derived from nativeCurrency
   accountAddress,
+  chainId,
 }) {
   const t = useContext(I18nContext);
+  const networkIcon = CHAIN_ID_TO_NETWORK_IMAGE_URL_MAP[chainId];
+  const networkIconWrapperClass = networkIcon
+    ? 'network-account-balance-header__network-account__ident-icon-ethereum'
+    : 'network-account-balance-header__network-account__ident-icon-ethereum--gray';
 
   return (
     <Box
-      display={DISPLAY.FLEX}
-      flexDirection={FLEX_DIRECTION.ROW}
+      display={Display.Flex}
+      flexDirection={FlexDirection.Row}
       padding={4}
       className="network-account-balance-header"
-      alignItems={ALIGN_ITEMS.CENTER}
-      justifyContent={JUSTIFY_CONTENT.SPACE_BETWEEN}
+      alignItems={AlignItems.center}
+      justifyContent={JustifyContent.spaceBetween}
     >
       <Box
-        display={DISPLAY.FLEX}
-        flexDirection={FLEX_DIRECTION.ROW}
-        alignItems={ALIGN_ITEMS.CENTER}
+        display={Display.Flex}
+        flexDirection={FlexDirection.Row}
+        alignItems={AlignItems.center}
         gap={2}
-        marginRight={5}
       >
         <Box
-          display={DISPLAY.FLEX}
-          flexDirection={FLEX_DIRECTION.ROW}
-          alignItems={ALIGN_ITEMS.CENTER}
+          display={Display.Flex}
+          flexDirection={FlexDirection.Row}
+          alignItems={AlignItems.center}
         >
           <Identicon address={accountAddress} diameter={32} />
-          <Identicon
-            address={accountAddress}
-            diameter={16}
-            imageBorder
-            image="./images/eth_badge.svg"
-            className="network-account-balance-header__network-account__ident-icon-ethereum"
+          <IconWithFallback
+            name={networkName}
+            size={16}
+            icon={networkIcon}
+            wrapperClassName={networkIconWrapperClass}
           />
         </Box>
         <Box
-          display={DISPLAY.FLEX}
-          alignItems={ALIGN_ITEMS.FLEX_START}
-          flexDirection={FLEX_DIRECTION.COLUMN}
+          display={Display.Flex}
+          alignItems={AlignItems.flexStart}
+          flexDirection={FlexDirection.Column}
         >
-          <Typography
-            variant={TYPOGRAPHY.H7}
-            color={COLORS.TEXT_ALTERNATIVE}
-            marginBottom={0}
+          <Text
+            variant={TextVariant.bodySm}
+            as="h6"
+            color={TextColor.textAlternative}
+            data-testid="signature-request-network-display"
           >
             {networkName}
-          </Typography>
+          </Text>
 
-          <Typography
-            variant={TYPOGRAPHY.H6}
-            color={COLORS.TEXT_DEFAULT}
-            fontWeight={FONT_WEIGHT.BOLD}
-            marginTop={0}
+          <Text
+            variant={TextVariant.bodySm}
+            as="h6"
+            color={TextColor.textDefault}
+            fontWeight={FontWeight.Bold}
           >
             {accountName}
-          </Typography>
+          </Text>
         </Box>
       </Box>
       <Box
-        display={DISPLAY.FLEX}
-        alignItems={ALIGN_ITEMS.FLEX_END}
-        flexDirection={FLEX_DIRECTION.COLUMN}
+        display={Display.Flex}
+        alignItems={AlignItems.flexEnd}
+        flexDirection={FlexDirection.Column}
       >
-        <Typography
-          variant={TYPOGRAPHY.H7}
-          color={COLORS.TEXT_ALTERNATIVE}
-          marginBottom={0}
+        <Text
+          variant={TextVariant.bodySm}
+          as="h6"
+          color={TextColor.textAlternative}
         >
           {t('balance')}
-        </Typography>
+        </Text>
 
-        <Typography
-          variant={TYPOGRAPHY.H6}
-          color={COLORS.TEXT_DEFAULT}
-          fontWeight={FONT_WEIGHT.BOLD}
-          marginTop={0}
+        <Text
+          variant={TextVariant.bodySm}
+          as="h6"
+          color={TextColor.textDefault}
+          fontWeight={FontWeight.Bold}
+          align={TextAlign.End}
         >
           {accountBalance} {tokenName}
-        </Typography>
+        </Text>
       </Box>
     </Box>
   );
@@ -105,7 +113,8 @@ export default function NetworkAccountBalanceHeader({
 NetworkAccountBalanceHeader.propTypes = {
   networkName: PropTypes.string,
   accountName: PropTypes.string,
-  accountBalance: PropTypes.number,
+  accountBalance: PropTypes.string,
   tokenName: PropTypes.string,
   accountAddress: PropTypes.string,
+  chainId: PropTypes.string,
 };

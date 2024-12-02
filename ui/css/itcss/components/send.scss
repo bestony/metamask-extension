@@ -1,9 +1,11 @@
+@use "design-system";
+
 .send-screen-wrapper {
   display: flex;
   flex-flow: column nowrap;
   z-index: 25;
 
-  @include screen-sm-max {
+  @include design-system.screen-sm-max {
     width: 100%;
     overflow-y: auto;
   }
@@ -24,7 +26,7 @@
   width: 498px;
   flex: 1 0 auto;
 
-  @include screen-sm-max {
+  @include design-system.screen-sm-max {
     top: 0;
     width: 100%;
     box-shadow: none;
@@ -39,7 +41,7 @@
 }
 
 .send-screen input {
-  @include H7;
+  @include design-system.H7;
 
   width: 100%;
 }
@@ -56,7 +58,7 @@
   padding: 4px;
   background-color: var(--color-background-default);
 
-  @include screen-sm-max {
+  @include design-system.screen-sm-max {
     position: relative;
     top: 0;
   }
@@ -68,14 +70,6 @@
 
   .fa-bolt {
     padding-right: 4px;
-  }
-
-  .large-input {
-    @include Paragraph;
-
-    border: 1px solid var(--color-border-default);
-    border-radius: 4px;
-    margin: 4px 0 20px;
   }
 
   .send-screen-gas-input {
@@ -93,7 +87,7 @@
     }
 
     .send-screen-input-wrapper__error-message {
-      @include H7;
+      @include design-system.H7;
 
       display: block;
       position: absolute;
@@ -104,7 +98,7 @@
   }
 
   .send-screen-input-wrapper__error-message {
-    @include H7;
+    @include design-system.H7;
 
     display: block;
     position: absolute;
@@ -119,7 +113,7 @@
 }
 
 .send-screen-gas-input {
-  @include Paragraph;
+  @include design-system.Paragraph;
 
   width: 100%;
   height: 41px;
@@ -160,7 +154,7 @@
 }
 
 .send-screen-gas-input-customize {
-  @include H7;
+  @include design-system.H7;
 
   color: var(--color-primary-default);
   cursor: pointer;
@@ -175,22 +169,6 @@
   height: 100%;
 }
 
-.customize-gas-tooltip-container {
-  @include Paragraph;
-
-  position: absolute;
-  bottom: 50px;
-  width: 237px;
-  height: 307px;
-  background-color: var(--color-background-default);
-  opacity: 1;
-  box-shadow: var(--shadow-size-xs) var(--color-shadow-default);
-  z-index: 1050;
-  padding: 13px 19px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
 .gas-tooltip-arrow {
   height: 25px;
   width: 25px;
@@ -203,27 +181,13 @@
   box-shadow: var(--shadow-size-xs) var(--color-shadow-default);
 }
 
-.customize-gas-tooltip-container input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  display: none;
-}
-
-.customize-gas-tooltip-container input[type='number']:hover::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  display: none;
-}
-
-.customize-gas-tooltip {
-  position: relative;
-}
-
 .gas-tooltip {
   display: flex;
   justify-content: center;
 }
 
 .gas-tooltip-label {
-  @include Paragraph;
+  @include design-system.Paragraph;
 
   color: var(--color-text-alternative);
 }
@@ -241,22 +205,8 @@
   margin-left: 6px;
 }
 
-.customize-gas-input {
-  @include Paragraph;
-
-  width: 178px;
-  height: 28px;
-  border: 1px solid var(--color-border-muted);
-  color: var(--color-text-default);
-  padding-left: 8px;
-}
-
-.customize-gas-input-wrapper {
-  position: relative;
-}
-
 .gas-tooltip-input-detail {
-  @include H7;
+  @include design-system.H7;
 
   position: absolute;
   top: 4px;
@@ -265,7 +215,7 @@
 }
 
 .gas-tooltip-input-arrows {
-  @include H6;
+  @include design-system.H6;
 
   position: absolute;
   top: 0;
@@ -294,13 +244,13 @@
 
 .send-screen {
   &__title {
-    @include H4;
+    @include design-system.H4;
 
     color: var(--color-text-alternative);
   }
 
   &__subtitle {
-    @include H6;
+    @include design-system.H6;
 
     margin: 10px 0 20px;
   }
@@ -334,7 +284,7 @@
     flex-flow: column nowrap;
     flex: 1 0 auto;
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       top: 0;
       width: 100%;
       box-shadow: none;
@@ -347,7 +297,7 @@
     top: -35px;
     z-index: 25;
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       position: relative;
       top: 0;
       flex: 0 0 auto;
@@ -355,7 +305,7 @@
   }
 
   &__title {
-    @include H4;
+    @include design-system.H4;
 
     color: var(--color-text-alternative);
   }
@@ -363,14 +313,14 @@
   &__description,
   &__balance-text,
   &__token-symbol {
-    @include H6;
+    @include design-system.H6;
 
     margin-top: 10px;
     text-align: center;
   }
 
   &__token-balance {
-    @include H1;
+    @include design-system.H1;
 
     margin-top: 13px;
 
@@ -385,7 +335,7 @@
     align-items: center;
     flex: 0 0 auto;
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       margin-top: 24px;
     }
 
@@ -413,7 +363,7 @@
     align-items: center;
     position: relative;
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       width: 100%;
       top: 0;
       box-shadow: none;
@@ -424,7 +374,7 @@
   &__send-header-icon-container {
     z-index: 25;
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       position: relative;
       top: 0;
     }
@@ -450,7 +400,7 @@
     border-radius: 50%;
     z-index: 100;
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       top: 36px;
     }
   }
@@ -464,7 +414,7 @@
     justify-content: center;
     align-items: center;
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       height: 59px;
       width: 100vw;
     }
@@ -479,7 +429,7 @@
     left: 178px;
     top: 75px;
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       top: 46px;
       left: 0;
       right: 0;
@@ -488,7 +438,7 @@
   }
 
   &__title {
-    @include H3;
+    @include design-system.H3;
 
     color: var(--color-text-alternative);
     text-align: center;
@@ -496,7 +446,7 @@
   }
 
   &__copy {
-    @include H6;
+    @include design-system.H6;
 
     color: var(--color-text-alternative);
     text-align: center;
@@ -505,7 +455,7 @@
   }
 
   &__error {
-    @include H7;
+    @include design-system.H7;
 
     left: 8px;
     color: var(--color-error-default);
@@ -516,7 +466,7 @@
   }
 
   &__warning {
-    @include H7;
+    @include design-system.H7;
 
     left: 8px;
     color: var(--color-warning-default);
@@ -527,7 +477,7 @@
   }
 
   &__form {
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       margin: 0;
       flex: 1 1 auto;
     }
@@ -582,7 +532,7 @@
   }
 
   &__form-label {
-    @include Paragraph;
+    @include design-system.Paragraph;
 
     color: var(--color-text-alternative);
     width: 95px;
@@ -591,7 +541,7 @@
 
   &__from-dropdown,
   &__asset-dropdown {
-    @include H7;
+    @include design-system.H7;
 
     width: 100%;
     border: 1px solid var(--color-border-muted);
@@ -651,6 +601,10 @@
       align-items: center;
       padding: 0 8px;
       cursor: pointer;
+
+      /* Prevents the contents of the asset from going outside the dropdown area  */
+      max-width: 100%;
+      overflow: hidden;
     }
 
     &__asset-icon {
@@ -664,16 +618,19 @@
       flex-flow: column nowrap;
       margin-left: 8px;
       flex-grow: 1;
+
+      /* Keeps the down arrow on screen */
+      overflow: hidden;
     }
 
-    @include screen-sm-max {
+    @include design-system.screen-sm-max {
       &__asset-data {
         width: 60%;
       }
     }
 
     &__symbol {
-      @include Paragraph;
+      @include design-system.Paragraph;
 
       margin-bottom: 2px;
       overflow: hidden;
@@ -682,10 +639,13 @@
     }
 
     &__name {
-      @include H7;
+      @include design-system.H7;
 
+      /* Prevents the token balance or NFT title from wrapping or silently truncating */
       display: flex;
-      flex-flow: row nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
 
       &__label {
         margin-right: 0.25rem;
@@ -732,13 +692,13 @@
         height: 100%;
 
         &:hover {
-          background-color: var(--color-background-default);
+          background-color: var(--color-background-default-hover);
         }
       }
     }
 
     &__input {
-      @include Paragraph;
+      @include design-system.Paragraph;
 
       z-index: 1025;
       position: relative;
@@ -755,7 +715,7 @@
   &__memo-text-area,
   &__hex-data {
     &__input {
-      @include Paragraph;
+      @include design-system.Paragraph;
 
       z-index: 1025;
       position: relative;
@@ -770,7 +730,7 @@
   }
 
   &__amount-max {
-    @include H7;
+    @include design-system.H7;
 
     position: relative;
     display: inline-block;
@@ -816,7 +776,7 @@
   }
 
   &__sliders-icon-container {
-    @include Paragraph;
+    @include design-system.Paragraph;
 
     display: flex;
     align-items: center;
@@ -860,129 +820,6 @@
     margin: 0 4px;
   }
 
-  &__customize-gas {
-    border: 1px solid var(--color-border-muted);
-    border-radius: 4px;
-    background-color: var(--color-background-default);
-    box-shadow: var(--shadow-size-xs) var(--color-shadow-default);
-    display: flex;
-    flex-flow: column;
-
-    @include screen-sm-max {
-      width: 100vw;
-      height: 100vh;
-    }
-
-    &__header {
-      @include H3;
-
-      height: 52px;
-      border-bottom: 1px solid var(--color-border-muted);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-
-      @include screen-sm-max {
-        flex: 0 0 auto;
-      }
-    }
-
-    &__title {
-      margin-left: 19.25px;
-    }
-
-    &__close::after {
-      content: '\00D7';
-      font-size: 1.8em;
-      color: var(--color-icon-default);
-      cursor: pointer;
-      margin-right: 19.25px;
-    }
-
-    &__content {
-      display: flex;
-      flex-flow: column nowrap;
-      height: 100%;
-    }
-
-    &__body {
-      display: flex;
-      margin-bottom: 24px;
-
-      @include screen-sm-max {
-        flex-flow: column;
-        flex: 1 1 auto;
-      }
-    }
-
-    &__footer {
-      @include H3;
-
-      height: 75px;
-      border-top: 1px solid var(--color-border-muted);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: relative;
-
-      @include screen-sm-max {
-        flex: 0 0 auto;
-      }
-    }
-
-    &__buttons {
-      display: flex;
-      justify-content: space-between;
-      margin-right: 21.25px;
-    }
-
-    &__revert,
-    &__cancel,
-    &__save,
-    &__save__error {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 0 3px;
-      cursor: pointer;
-    }
-
-    &__revert {
-      @include Paragraph;
-
-      color: var(--color-text-muted);
-      margin-left: 21.25px;
-    }
-
-    &__cancel,
-    &__save,
-    &__save__error {
-      width: 85.74px;
-      min-width: initial;
-    }
-
-    &__save__error {
-      opacity: 0.5;
-      cursor: auto;
-    }
-
-    &__error-message {
-      @include H7;
-
-      display: block;
-      position: absolute;
-      top: -18px;
-      right: 0;
-      color: var(--color-error-default);
-      width: 100%;
-      text-align: center;
-    }
-
-    &__cancel {
-      margin-right: 10px;
-    }
-  }
-
   &__gas-modal-card {
     width: 360px;
     display: flex;
@@ -991,7 +828,7 @@
     padding-left: 20px;
 
     &__title {
-      @include H4;
+      @include design-system.H4;
 
       height: 26px;
       color: var(--color-text-alternative);
@@ -999,7 +836,7 @@
     }
 
     &__copy {
-      @include Paragraph;
+      @include design-system.Paragraph;
 
       height: 38px;
       width: 314px;
@@ -1007,20 +844,8 @@
       margin-top: 17px;
     }
 
-    .customize-gas-input-wrapper {
-      margin-top: 17px;
-    }
-
-    .customize-gas-input {
-      height: 54px;
-      width: 315px;
-      border: 1px solid var(--color-border-muted);
-      background-color: var(--color-background-default);
-      padding-left: 15px;
-    }
-
     .gas-tooltip-input-arrows {
-      @include H4;
+      @include design-system.H4;
 
       width: 32px;
       height: 54px;
@@ -1055,7 +880,7 @@
 }
 
 .advanced-gas-options-btn {
-  @include H6;
+  @include design-system.H6;
 
   display: flex;
   justify-content: flex-end;
@@ -1065,7 +890,7 @@
 }
 
 .sliders-icon-container {
-  @include Paragraph;
+  @include design-system.Paragraph;
 
   display: flex;
   align-items: center;
@@ -1082,7 +907,7 @@
 }
 
 .gas-fee-reset {
-  @include H6;
+  @include design-system.H6;
 
   display: flex;
   align-items: center;

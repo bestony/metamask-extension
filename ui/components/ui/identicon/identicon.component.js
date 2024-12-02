@@ -12,6 +12,9 @@ const getStyles = (diameter) => ({
   width: diameter,
   borderRadius: diameter / 2,
 });
+const getImage = async (image, ipfsGateway) => {
+  return await getAssetImageURL(image, ipfsGateway);
+};
 
 export default class Identicon extends Component {
   static propTypes = {
@@ -57,6 +60,15 @@ export default class Identicon extends Component {
      * User preferred IPFS gateway
      */
     ipfsGateway: PropTypes.string,
+    /**
+     * Watched NFT contract data keyed by address
+     */
+    watchedNftContracts: PropTypes.object,
+  };
+
+  state = {
+    imageLoadingError: false,
+    imageUrl: '',
   };
 
   static defaultProps = {
@@ -68,11 +80,28 @@ export default class Identicon extends Component {
     useBlockie: false,
     alt: '',
     tokenList: {},
+    watchedNftContracts: {},
   };
 
+  loadImage = async () => {
+    const result = await getImage(this.props.image, this.props.ipfsGateway);
+    this.setState({ imageUrl: result });
+  };
+
+  async componentDidMount() {
+    this.loadImage();
+  }
+
+  async componentDidUpdate(prevProps) {
+    if (prevProps.image !== this.props.image) {
+      this.loadImage();
+    }
+  }
+
   renderImage() {
-    const { className, diameter, alt, imageBorder, ipfsGateway } = this.props;
+    const { className, diameter, alt, imageBorder } = this.props;
     let { image } = this.props;
+    const { imageUrl } = this.state;
 
     if (Array.isArray(image) && image.length) {
       image = image[0];
@@ -82,7 +111,7 @@ export default class Identicon extends Component {
       typeof image === 'string' &&
       image.toLowerCase().startsWith('ipfs://')
     ) {
-      image = getAssetImageURL(image, ipfsGateway);
+      image = imageUrl;
     }
 
     return (
@@ -93,12 +122,17 @@ export default class Identicon extends Component {
         src={image}
         style={getStyles(diameter)}
         alt={alt}
+        onError={() => {
+          this.setState({ imageLoadingError: true });
+        }}
       />
     );
   }
 
   renderJazzicon() {
-    const { address, className, diameter, alt, tokenList } = this.props;
+    const { address, className, diameter, alt } = this.props;
+    const tokenList = this.getTokenList();
+
     return (
       <Jazzicon
         address={address}
@@ -124,22 +158,56 @@ export default class Identicon extends Component {
     );
   }
 
-  shouldComponentUpdate(nextProps) {
+  renderBlockieOrJazzIcon() {
+    const { useBlockie } = this.props;
+    return useBlockie ? this.renderBlockie() : this.renderJazzicon();
+  }
+
+  shouldComponentUpdate(nextProps, nextState) {
     // We only want to re-render if props are different.
-    return !isEqual(nextProps, this.props);
+    return !isEqual(nextProps, this.props) || !isEqual(nextState, this.state);
+  }
+
+  getTokenImage() {
+    const { address, tokenList } = this.props;
+    return tokenList[address?.toLowerCase()]?.iconUrl;
+  }
+
+  getNftImage() {
+    const { address, watchedNftContracts } = this.props;
+    return watchedNftContracts[address?.toLowerCase()]?.logo;
+  }
+
+  getTokenList() {
+    const { address } = this.props;
+    const tokenImage = this.getTokenImage();
+    const nftImage = this.getNftImage();
+    const iconUrl = tokenImage || nftImage;
+
+    if (!iconUrl) {
+      return {};
+    }
+
+    return {
+      [address.toLowerCase()]: { iconUrl },
+    };
   }
 
   render() {
-    const { address, image, useBlockie, addBorder, diameter, tokenList } =
-      this.props;
+    const { address, image, addBorder, diameter } = this.props;
+    const { imageLoadingError } = this.state;
     const size = diameter + 8;
+
+    if (imageLoadingError) {
+      return this.renderBlockieOrJazzIcon();
+    }
 
     if (image) {
       return this.renderImage();
     }
 
     if (address) {
-      if (tokenList[address.toLowerCase()]?.iconUrl) {
+      if (this.getTokenImage() || this.getNftImage()) {
         return this.renderJazzicon();
       }
 
@@ -148,7 +216,7 @@ export default class Identicon extends Component {
           className={classnames({ 'identicon__address-wrapper': addBorder })}
           style={addBorder ? getStyles(size) : null}
         >
-          {useBlockie ? this.renderBlockie() : this.renderJazzicon()}
+          {this.renderBlockieOrJazzIcon()}
         </div>
       );
     }

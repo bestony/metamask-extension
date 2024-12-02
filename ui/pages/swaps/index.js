@@ -14,56 +14,51 @@ import {
   Redirect,
 } from 'react-router-dom';
 import { shuffle, isEqual } from 'lodash';
+import { TransactionStatus } from '@metamask/transaction-controller';
 import { I18nContext } from '../../contexts/i18n';
+
 import {
   getSelectedAccount,
-  getCurrentChainId,
   getIsSwapsChain,
   isHardwareWallet,
   getHardwareWalletType,
   getTokenList,
 } from '../../selectors/selectors';
+import { getCurrentChainId } from '../../../shared/modules/selectors/networks';
 import {
   getQuotes,
   clearSwapsState,
   getTradeTxId,
   getApproveTxId,
   getFetchingQuotes,
-  setTopAssets,
   getFetchParams,
-  setAggregatorMetadata,
   getAggregatorMetadata,
   getBackgroundSwapRouteState,
   getSwapsErrorKey,
   getSwapsFeatureIsLive,
   prepareToLeaveSwaps,
-  fetchAndSetSwapsGasPriceInfo,
   fetchSwapsLivenessAndFeatureFlags,
   getReviewSwapClickedTimestamp,
-  getPendingSmartTransactions,
-  getSmartTransactionsOptInStatus,
-  getSmartTransactionsEnabled,
   getCurrentSmartTransactionsEnabled,
   getCurrentSmartTransactionsError,
-  dismissCurrentSmartTransactionsErrorMessage,
-  getCurrentSmartTransactionsErrorMessageDismissed,
-  navigateBackToBuildQuote,
+  setTransactionSettingsOpened,
+  getLatestAddedTokenTo,
 } from '../../ducks/swaps/swaps';
+import { getCurrentNetworkTransactions } from '../../selectors';
 import {
-  checkNetworkAndAccountSupports1559,
-  currentNetworkTxListSelector,
-  getSwapsDefaultToken,
-} from '../../selectors';
+  getSmartTransactionsEnabled,
+  getSmartTransactionsOptInStatusForMetrics,
+} from '../../../shared/modules/selectors';
 import {
   AWAITING_SIGNATURES_ROUTE,
   AWAITING_SWAP_ROUTE,
   SMART_TRANSACTION_STATUS_ROUTE,
-  BUILD_QUOTE_ROUTE,
-  VIEW_QUOTE_ROUTE,
   LOADING_QUOTES_ROUTE,
   SWAPS_ERROR_ROUTE,
   DEFAULT_ROUTE,
   SWAPS_MAINTENANCE_ROUTE,
+  PREPARE_SWAP_ROUTE,
+  SWAPS_NOTIFICATION_ROUTE,
 } from '../../helpers/constants/routes';
 import {
   ERROR_FETCHING_QUOTES,
@@ -75,7 +70,6 @@ import {
 
 import {
   resetBackgroundSwapsState,
-  setSwapsTokens,
   ignoreTokens,
   setBackgroundSwapRouteState,
   setSwapsErrorKey,
@@ -83,23 +77,24 @@ import {
 
 import { useGasFeeEstimates } from '../../hooks/useGasFeeEstimates';
 import FeatureToggledRoute from '../../helpers/higher-order-components/feature-toggled-route';
-import { EVENT } from '../../../shared/constants/metametrics';
-import { TRANSACTION_STATUSES } from '../../../shared/constants/transaction';
-import ActionableMessage from '../../components/ui/actionable-message';
+import { MetaMetricsEventCategory } from '../../../shared/constants/metametrics';
 import { MetaMetricsContext } from '../../contexts/metametrics';
+import { getSwapsTokensReceivedFromTxMeta } from '../../../shared/lib/transactions-controller-utils';
+import { Icon, IconName, IconSize } from '../../components/component-library';
+import Box from '../../components/ui/box';
 import {
-  fetchTokens,
-  fetchTopAssets,
-  getSwapsTokensReceivedFromTxMeta,
-  fetchAggregatorMetadata,
-  stxErrorTypes,
-} from './swaps.util';
+  DISPLAY,
+  JustifyContent,
+  IconColor,
+  FRACTIONS,
+} from '../../helpers/constants/design-system';
+import useUpdateSwapsState from './hooks/useUpdateSwapsState';
 import AwaitingSignatures from './awaiting-signatures';
 import SmartTransactionStatus from './smart-transaction-status';
 import AwaitingSwap from './awaiting-swap';
 import LoadingQuote from './loading-swaps-quotes';
-import BuildQuote from './build-quote';
-import ViewQuote from './view-quote';
+import PrepareSwapPage from './prepare-swap-page/prepare-swap-page';
+import NotificationPage from './notification-page/notification-page';
 
 export default function Swap() {
   const t = useContext(I18nContext);
@@ -114,7 +109,7 @@ export default function Swap() {
   const isLoadingQuotesRoute = pathname === LOADING_QUOTES_ROUTE;
   const isSmartTransactionStatusRoute =
     pathname === SMART_TRANSACTION_STATUS_ROUTE;
-  const isViewQuoteRoute = pathname === VIEW_QUOTE_ROUTE;
+  const isPrepareSwapRoute = pathname === PREPARE_SWAP_ROUTE;
 
   const [currentStxErrorTracked, setCurrentStxErrorTracked] = useState(false);
   const fetchParams = useSelector(getFetchParams, isEqual);
@@ -123,7 +118,8 @@ export default function Swap() {
   const routeState = useSelector(getBackgroundSwapRouteState);
   const selectedAccount = useSelector(getSelectedAccount, shallowEqual);
   const quotes = useSelector(getQuotes, isEqual);
-  const txList = useSelector(currentNetworkTxListSelector, shallowEqual);
+  const latestAddedTokenTo = useSelector(getLatestAddedTokenTo, isEqual);
+  const txList = useSelector(getCurrentNetworkTransactions, shallowEqual);
   const tradeTxId = useSelector(getTradeTxId);
   const approveTxId = useSelector(getApproveTxId);
   const aggregatorMetadata = useSelector(getAggregatorMetadata, shallowEqual);
@@ -132,17 +128,12 @@ export default function Swap() {
   const swapsEnabled = useSelector(getSwapsFeatureIsLive);
   const chainId = useSelector(getCurrentChainId);
   const isSwapsChain = useSelector(getIsSwapsChain);
-  const networkAndAccountSupports1559 = useSelector(
-    checkNetworkAndAccountSupports1559,
-  );
-  const defaultSwapsToken = useSelector(getSwapsDefaultToken, isEqual);
   const tokenList = useSelector(getTokenList, isEqual);
   const shuffledTokensList = shuffle(Object.values(tokenList));
   const reviewSwapClickedTimestamp = useSelector(getReviewSwapClickedTimestamp);
-  const pendingSmartTransactions = useSelector(getPendingSmartTransactions);
   const reviewSwapClicked = Boolean(reviewSwapClickedTimestamp);
   const smartTransactionsOptInStatus = useSelector(
-    getSmartTransactionsOptInStatus,
+    getSmartTransactionsOptInStatusForMetrics,
   );
   const smartTransactionsEnabled = useSelector(getSmartTransactionsEnabled);
   const currentSmartTransactionsEnabled = useSelector(
@@ -151,11 +142,6 @@ export default function Swap() {
   const currentSmartTransactionsError = useSelector(
     getCurrentSmartTransactionsError,
   );
-  const smartTransactionsErrorMessageDismissed = useSelector(
-    getCurrentSmartTransactionsErrorMessageDismissed,
-  );
-  const showSmartTransactionsErrorMessage =
-    currentSmartTransactionsError && !smartTransactionsErrorMessageDismissed;
 
   useEffect(() => {
     const leaveSwaps = async () => {
@@ -176,8 +162,6 @@ export default function Swap() {
   const { balance: ethBalance, address: selectedAccountAddress } =
     selectedAccount;
 
-  const { destinationTokenAddedForSwap } = fetchParams || {};
-
   const approveTxData =
     approveTxId && txList.find(({ id }) => approveTxId === id);
   const tradeTxData = tradeTxId && txList.find(({ id }) => tradeTxId === id);
@@ -192,12 +176,12 @@ export default function Swap() {
       approveTxData,
       chainId,
     );
-  const tradeConfirmed = tradeTxData?.status === TRANSACTION_STATUSES.CONFIRMED;
+  const tradeConfirmed = tradeTxData?.status === TransactionStatus.confirmed;
   const approveError =
-    approveTxData?.status === TRANSACTION_STATUSES.FAILED ||
+    approveTxData?.status === TransactionStatus.failed ||
     approveTxData?.txReceipt?.status === '0x0';
   const tradeError =
-    tradeTxData?.status === TRANSACTION_STATUSES.FAILED ||
+    tradeTxData?.status === TransactionStatus.failed ||
     tradeTxData?.txReceipt?.status === '0x0';
   const conversionError = approveError || tradeError;
 
@@ -208,13 +192,10 @@ export default function Swap() {
   const clearTemporaryTokenRef = useRef();
   useEffect(() => {
     clearTemporaryTokenRef.current = () => {
-      if (
-        destinationTokenAddedForSwap &&
-        (!isAwaitingSwapRoute || conversionError)
-      ) {
+      if (latestAddedTokenTo && (!isAwaitingSwapRoute || conversionError)) {
         dispatch(
           ignoreTokens({
-            tokensToIgnore: destinationTokenInfo?.address,
+            tokensToIgnore: latestAddedTokenTo,
             dontShowLoadingIndicator: true,
           }),
         );
@@ -223,7 +204,7 @@ export default function Swap() {
   }, [
     conversionError,
     dispatch,
-    destinationTokenAddedForSwap,
+    latestAddedTokenTo,
     destinationTokenInfo,
     fetchParams,
     isAwaitingSwapRoute,
@@ -234,36 +215,14 @@ export default function Swap() {
     };
   }, []);
 
-  // eslint-disable-next-line
-  useEffect(() => {
-    if (!isSwapsChain) {
-      return undefined;
-    }
-    fetchTokens(chainId)
-      .then((tokens) => {
-        dispatch(setSwapsTokens(tokens));
-      })
-      .catch((error) => console.error(error));
-    fetchTopAssets(chainId).then((topAssets) => {
-      dispatch(setTopAssets(topAssets));
-    });
-    fetchAggregatorMetadata(chainId).then((newAggregatorMetadata) => {
-      dispatch(setAggregatorMetadata(newAggregatorMetadata));
-    });
-    if (!networkAndAccountSupports1559) {
-      dispatch(fetchAndSetSwapsGasPriceInfo(chainId));
-    }
-    return () => {
-      dispatch(prepareToLeaveSwaps());
-    };
-  }, [dispatch, chainId, networkAndAccountSupports1559, isSwapsChain]);
+  useUpdateSwapsState();
 
   const hardwareWalletUsed = useSelector(isHardwareWallet);
   const hardwareWalletType = useSelector(getHardwareWalletType);
   const trackExitedSwapsEvent = () => {
     trackEvent({
       event: 'Exited Swaps',
-      category: EVENT.CATEGORIES.SWAPS,
+      category: MetaMetricsEventCategory.Swaps,
       sensitiveProperties: {
         token_from: fetchParams?.sourceTokenInfo?.symbol,
         token_from_amount: fetchParams?.value,
@@ -324,7 +283,7 @@ export default function Swap() {
   const trackErrorStxEvent = useCallback(() => {
     trackEvent({
       event: 'Error Smart Transactions',
-      category: EVENT.CATEGORIES.SWAPS,
+      category: MetaMetricsEventCategory.Swaps,
       sensitiveProperties: {
         token_from: fetchParams?.sourceTokenInfo?.symbol,
         token_from_amount: fetchParams?.value,
@@ -374,136 +333,86 @@ export default function Swap() {
     return <></>;
   }
 
-  const isStxNotEnoughFundsError =
-    currentSmartTransactionsError === stxErrorTypes.NOT_ENOUGH_FUNDS;
-  const isRegularTxInProgressError =
-    currentSmartTransactionsError === stxErrorTypes.REGULAR_TX_IN_PROGRESS;
+  const redirectToDefaultRoute = async () => {
+    clearTemporaryTokenRef.current();
+    history.push({
+      pathname: DEFAULT_ROUTE,
+      state: { stayOnHomePage: true },
+    });
+    dispatch(clearSwapsState());
+    await dispatch(resetBackgroundSwapsState());
+  };
 
   return (
     <div className="swaps">
       <div className="swaps__container">
         <div className="swaps__header">
-          <div
-            className="swaps__header-edit"
-            onClick={async () => {
-              await dispatch(navigateBackToBuildQuote(history));
-            }}
-          >
-            {isViewQuoteRoute && t('edit')}
-          </div>
-          <div className="swaps__title">{t('swap')}</div>
-          <div
-            className="swaps__header-cancel"
-            onClick={async () => {
-              clearTemporaryTokenRef.current();
-              dispatch(clearSwapsState());
-              await dispatch(resetBackgroundSwapsState());
-              history.push(DEFAULT_ROUTE);
+          <Box
+            display={DISPLAY.FLEX}
+            justifyContent={JustifyContent.center}
+            marginLeft={4}
+            width={FRACTIONS.ONE_TWELFTH}
+            tabIndex="0"
+            onKeyUp={(e) => {
+              if (e.key === 'Enter') {
+                redirectToDefaultRoute();
+              }
             }}
           >
             {!isAwaitingSwapRoute &&
               !isAwaitingSignaturesRoute &&
-              !isSmartTransactionStatusRoute &&
-              t('cancel')}
-          </div>
+              !isSmartTransactionStatusRoute && (
+                <Icon
+                  name={IconName.Arrow2Left}
+                  size={IconSize.Lg}
+                  color={IconColor.iconAlternative}
+                  onClick={redirectToDefaultRoute}
+                  style={{ cursor: 'pointer' }}
+                  title={t('cancel')}
+                />
+              )}
+          </Box>
+          <div className="swaps__title">{t('swap')}</div>
+          <Box
+            display={DISPLAY.FLEX}
+            justifyContent={JustifyContent.center}
+            marginRight={4}
+            width={FRACTIONS.ONE_TWELFTH}
+            tabIndex="0"
+            onKeyUp={(e) => {
+              if (e.key === 'Enter') {
+                dispatch(setTransactionSettingsOpened(true));
+              }
+            }}
+          >
+            {isPrepareSwapRoute && (
+              <Icon
+                name={IconName.Setting}
+                size={IconSize.Lg}
+                color={IconColor.iconAlternative}
+                onClick={() => {
+                  dispatch(setTransactionSettingsOpened(true));
+                }}
+                style={{ cursor: 'pointer' }}
+                title={t('transactionSettings')}
+              />
+            )}
+          </Box>
         </div>
         <div className="swaps__content">
-          {showSmartTransactionsErrorMessage && (
-            <ActionableMessage
-              type={isStxNotEnoughFundsError ? 'default' : 'warning'}
-              message={
-                isStxNotEnoughFundsError ? (
-                  <div>
-                    {t('swapApproveNeedMoreTokensSmartTransactions', [
-                      defaultSwapsToken.symbol,
-                    ])}{' '}
-                    <span
-                      onClick={() =>
-                        dispatch(dismissCurrentSmartTransactionsErrorMessage())
-                      }
-                      style={{
-                        textDecoration: 'underline',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {t('stxTryRegular')}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="build-quote__token-verification-warning-message">
-                    <button
-                      onClick={() => {
-                        dispatch(dismissCurrentSmartTransactionsErrorMessage());
-                      }}
-                      className="swaps__notification-close-button"
-                    />
-                    <div className="swaps__notification-title">
-                      {t('stxUnavailable')}
-                    </div>
-                    <div>
-                      {isRegularTxInProgressError
-                        ? t('stxFallbackPendingTx')
-                        : t('stxFallbackUnavailable')}
-                    </div>
-                  </div>
-                )
-              }
-              className={
-                isStxNotEnoughFundsError
-                  ? 'swaps__error-message'
-                  : 'actionable-message--left-aligned actionable-message--warning swaps__error-message'
-              }
-            />
-          )}
           <Switch>
             <FeatureToggledRoute
               redirectRoute={SWAPS_MAINTENANCE_ROUTE}
               flag={swapsEnabled}
-              path={BUILD_QUOTE_ROUTE}
+              path={PREPARE_SWAP_ROUTE}
               exact
-              render={() => {
-                if (tradeTxData && !conversionError) {
-                  return <Redirect to={{ pathname: AWAITING_SWAP_ROUTE }} />;
-                } else if (tradeTxData && routeState) {
-                  return <Redirect to={{ pathname: SWAPS_ERROR_ROUTE }} />;
-                } else if (routeState === 'loading' && aggregatorMetadata) {
-                  return <Redirect to={{ pathname: LOADING_QUOTES_ROUTE }} />;
-                }
-
-                return (
-                  <BuildQuote
-                    ethBalance={ethBalance}
-                    selectedAccountAddress={selectedAccountAddress}
-                    shuffledTokensList={shuffledTokensList}
-                  />
-                );
-              }}
-            />
-            <FeatureToggledRoute
-              redirectRoute={SWAPS_MAINTENANCE_ROUTE}
-              flag={swapsEnabled}
-              path={VIEW_QUOTE_ROUTE}
-              exact
-              render={() => {
-                if (
-                  pendingSmartTransactions.length > 0 &&
-                  routeState === 'smartTransactionStatus'
-                ) {
-                  return (
-                    <Redirect
-                      to={{ pathname: SMART_TRANSACTION_STATUS_ROUTE }}
-                    />
-                  );
-                }
-                if (Object.values(quotes).length) {
-                  return (
-                    <ViewQuote numberOfQuotes={Object.values(quotes).length} />
-                  );
-                } else if (fetchParams) {
-                  return <Redirect to={{ pathname: SWAPS_ERROR_ROUTE }} />;
-                }
-                return <Redirect to={{ pathname: BUILD_QUOTE_ROUTE }} />;
-              }}
+              render={() => (
+                <PrepareSwapPage
+                  ethBalance={ethBalance}
+                  selectedAccountAddress={selectedAccountAddress}
+                  shuffledTokensList={shuffledTokensList}
+                />
+              )}
             />
             <Route
               path={SWAPS_ERROR_ROUTE}
@@ -515,11 +424,22 @@ export default function Swap() {
                       swapComplete={false}
                       errorKey={swapsErrorKey}
                       txHash={tradeTxData?.hash}
+                      txId={tradeTxData?.id}
                       submittedTime={tradeTxData?.submittedTime}
                     />
                   );
                 }
-                return <Redirect to={{ pathname: BUILD_QUOTE_ROUTE }} />;
+                return <Redirect to={{ pathname: PREPARE_SWAP_ROUTE }} />;
+              }}
+            />
+            <Route
+              path={SWAPS_NOTIFICATION_ROUTE}
+              exact
+              render={() => {
+                if (!swapsErrorKey) {
+                  return <Redirect to={{ pathname: PREPARE_SWAP_ROUTE }} />;
+                }
+                return <NotificationPage notificationKey={swapsErrorKey} />;
               }}
             />
             <FeatureToggledRoute
@@ -542,13 +462,13 @@ export default function Swap() {
                         dispatch(setSwapsErrorKey(QUOTES_NOT_AVAILABLE_ERROR));
                         history.push(SWAPS_ERROR_ROUTE);
                       } else {
-                        history.push(VIEW_QUOTE_ROUTE);
+                        history.push(PREPARE_SWAP_ROUTE);
                       }
                     }}
                     aggregatorMetadata={aggregatorMetadata}
                   />
                 ) : (
-                  <Redirect to={{ pathname: BUILD_QUOTE_ROUTE }} />
+                  <Redirect to={{ pathname: PREPARE_SWAP_ROUTE }} />
                 );
               }}
             />
@@ -559,7 +479,7 @@ export default function Swap() {
                 return swapsEnabled === false ? (
                   <AwaitingSwap errorKey={OFFLINE_FOR_MAINTENANCE} />
                 ) : (
-                  <Redirect to={{ pathname: BUILD_QUOTE_ROUTE }} />
+                  <Redirect to={{ pathname: PREPARE_SWAP_ROUTE }} />
                 );
               }}
             />
@@ -574,7 +494,7 @@ export default function Swap() {
               path={SMART_TRANSACTION_STATUS_ROUTE}
               exact
               render={() => {
-                return <SmartTransactionStatus />;
+                return <SmartTransactionStatus txId={tradeTxData?.id} />;
               }}
             />
             <Route
@@ -586,6 +506,7 @@ export default function Swap() {
                     swapComplete={tradeConfirmed}
                     txHash={tradeTxData?.hash}
                     tokensReceived={tokensReceived}
+                    txId={tradeTxData?.id}
                     submittingSwap={
                       routeState === 'awaiting' && !(approveTxId || tradeTxId)
                     }

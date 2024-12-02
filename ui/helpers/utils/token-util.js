@@ -1,13 +1,11 @@
 import log from 'loglevel';
-import BigNumber from 'bignumber.js';
-import {
-  conversionUtil,
-  multiplyCurrencies,
-} from '../../../shared/modules/conversion.utils';
 import { getTokenStandardAndDetails } from '../../store/actions';
 import { isEqualCaseInsensitive } from '../../../shared/modules/string-utils';
 import { parseStandardTokenTransactionData } from '../../../shared/modules/transaction.utils';
-import { ERC20 } from '../../../shared/constants/transaction';
+import { TokenStandard } from '../../../shared/constants/transaction';
+import { getTokenValueParam } from '../../../shared/lib/metamask-controller-utils';
+import { calcTokenAmount } from '../../../shared/lib/transactions-controller-utils';
+import { Numeric } from '../../../shared/modules/Numeric';
 import * as util from './util';
 import { formatCurrency } from './confirm-tx.util';
 
@@ -21,6 +19,20 @@ async function getSymbolFromContract(tokenAddress) {
   } catch (error) {
     log.warn(
       `symbol() call for token at address ${tokenAddress} resulted in error:`,
+      error,
+    );
+    return undefined;
+  }
+}
+
+async function getNameFromContract(tokenAddress) {
+  const token = util.getContractAtAddress(tokenAddress);
+  try {
+    const [name] = await token.name();
+    return name;
+  } catch (error) {
+    log.warn(
+      `name() call for token at address ${tokenAddress} resulted in error:`,
       error,
     );
     return undefined;
@@ -61,6 +73,20 @@ async function getSymbol(tokenAddress, tokenList) {
   return symbol;
 }
 
+async function getName(tokenAddress, tokenList) {
+  let name = await getNameFromContract(tokenAddress);
+
+  if (!name) {
+    const contractMetadataInfo = getTokenMetadata(tokenAddress, tokenList);
+
+    if (contractMetadataInfo) {
+      name = contractMetadataInfo.name;
+    }
+  }
+
+  return name;
+}
+
 async function getDecimals(tokenAddress, tokenList) {
   let decimals = await getDecimalsFromContract(tokenAddress);
 
@@ -75,15 +101,23 @@ async function getDecimals(tokenAddress, tokenList) {
   return decimals;
 }
 
-export async function getSymbolAndDecimals(tokenAddress, tokenList) {
-  let symbol, decimals;
+export async function getSymbolAndDecimalsAndName(tokenAddress, tokenList) {
+  let symbol, decimals, name;
 
   try {
-    symbol = await getSymbol(tokenAddress, tokenList);
-    decimals = await getDecimals(tokenAddress, tokenList);
+    const results = await Promise.allSettled([
+      getSymbol(tokenAddress, tokenList),
+      getDecimals(tokenAddress, tokenList),
+      getName(tokenAddress, tokenList),
+    ]);
+    const fulfilled = results
+      .filter((result) => result.status === 'fulfilled')
+      .map((result) => result.value);
+
+    [symbol, decimals, name] = fulfilled;
   } catch (error) {
     log.warn(
-      `symbol() and decimal() calls for token at address ${tokenAddress} resulted in error:`,
+      `symbol() and decimal() and name() calls for token at address ${tokenAddress} resulted in error:`,
       error,
     );
   }
@@ -91,6 +125,7 @@ export async function getSymbolAndDecimals(tokenAddress, tokenList) {
   return {
     symbol: symbol || DEFAULT_SYMBOL,
     decimals,
+    name,
   };
 }
 
@@ -102,20 +137,9 @@ export function tokenInfoGetter() {
       return tokens[address];
     }
 
-    tokens[address] = await getSymbolAndDecimals(address, tokenList);
-
+    tokens[address] = await getSymbolAndDecimalsAndName(address, tokenList);
     return tokens[address];
   };
-}
-
-export function calcTokenAmount(value, decimals) {
-  const multiplier = Math.pow(10, Number(decimals || 0));
-  return new BigNumber(String(value)).div(multiplier);
-}
-
-export function calcTokenValue(value, decimals) {
-  const multiplier = Math.pow(10, Number(decimals || 0));
-  return new BigNumber(String(value)).times(multiplier);
 }
 
 /**
@@ -141,10 +165,6 @@ export function getTokenAddressParam(tokenData = {}) {
  * @param {object} tokenData - ethers Interface token data.
  * @returns {string | undefined} A decimal string value.
  */
-export function getTokenValueParam(tokenData = {}) {
-  return tokenData?.args?._value?.toString();
-}
-
 /**
  * Gets either the '_tokenId' parameter or the 'id' param of the passed token transaction data.,
  * These are the parsed tokenId values returned by `parseStandardTokenTransactionData` as defined
@@ -202,21 +222,19 @@ export function getTokenFiatAmount(
     return undefined;
   }
 
-  const currentTokenToFiatRate = multiplyCurrencies(
-    contractExchangeRate,
-    conversionRate,
-    {
-      multiplicandBase: 10,
-      multiplierBase: 10,
-    },
-  );
-  const currentTokenInFiat = conversionUtil(tokenAmount, {
-    fromNumericBase: 'dec',
-    fromCurrency: tokenSymbol,
-    toCurrency: currentCurrency.toUpperCase(),
-    numberOfDecimals: 2,
-    conversionRate: currentTokenToFiatRate,
-  });
+  const currentTokenToFiatRate = new Numeric(contractExchangeRate, 10)
+    .times(new Numeric(conversionRate, 10))
+    .toString();
+
+  let currentTokenInFiat = new Numeric(tokenAmount, 10);
+
+  if (tokenSymbol !== currentCurrency.toUpperCase() && currentTokenToFiatRate) {
+    currentTokenInFiat = currentTokenInFiat.applyConversionRate(
+      currentTokenToFiatRate,
+    );
+  }
+
+  currentTokenInFiat = currentTokenInFiat.round(2).toString();
   let result;
   if (hideCurrencySymbol) {
     result = formatCurrency(currentTokenInFiat, currentCurrency);
@@ -235,7 +253,7 @@ export async function getAssetDetails(
   tokenAddress,
   currentUserAddress,
   transactionData,
-  existingCollectibles,
+  existingNfts,
 ) {
   const tokenData = parseStandardTokenTransactionData(transactionData);
   if (!tokenData) {
@@ -252,18 +270,18 @@ export async function getAssetDetails(
 
   let tokenDetails;
 
-  // if a tokenId is present check if there is a collectible in state matching the address/tokenId
+  // if a tokenId is present check if there is an NFT in state matching the address/tokenId
   // and avoid unnecessary network requests to query token details we already have
-  if (existingCollectibles?.length && tokenId) {
-    const existingCollectible = existingCollectibles.find(
+  if (existingNfts?.length && tokenId) {
+    const existingNft = existingNfts.find(
       ({ address, tokenId: _tokenId }) =>
         isEqualCaseInsensitive(tokenAddress, address) && _tokenId === tokenId,
     );
 
-    if (existingCollectible) {
+    if (existingNft && (existingNft.name || existingNft.symbol)) {
       return {
         toAddress,
-        ...existingCollectible,
+        ...existingNft,
       };
     }
   }
@@ -279,23 +297,21 @@ export async function getAssetDetails(
     // if we can't determine any token standard or details return the data we can extract purely from the parsed transaction data
     return { toAddress, tokenId };
   }
-
+  const tokenValue = getTokenValueParam(tokenData);
+  const tokenDecimals = tokenDetails?.decimals;
   const tokenAmount =
     tokenData &&
-    tokenDetails?.decimals &&
-    calcTokenAmount(
-      getTokenValueParam(tokenData),
-      tokenDetails?.decimals,
-    ).toString(10);
+    tokenValue &&
+    tokenDecimals &&
+    calcTokenAmount(tokenValue, tokenDecimals).toString(10);
 
-  const decimals =
-    tokenDetails?.decimals && Number(tokenDetails.decimals?.toString(10));
+  const decimals = tokenDecimals && Number(tokenDecimals?.toString(10));
 
-  if (tokenDetails?.standard === ERC20) {
+  if (tokenDetails?.standard === TokenStandard.ERC20) {
     tokenId = undefined;
   }
 
-  // else if not a collectible already in state or standard === ERC20 return tokenDetails and tokenId
+  // else if not an NFT already in state or standard === ERC20 return tokenDetails and tokenId
   return {
     tokenAmount,
     toAddress,

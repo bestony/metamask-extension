@@ -1,3 +1,5 @@
+@use "design-system";
+
 .transaction-list-item-details {
   div.disclosure + div.disclosure {
     margin-top: 0;
@@ -62,7 +64,7 @@
   &__operations {
     margin: 0 0 16px 16px;
     display: flex;
-    justify-content: end;
+    justify-content: flex-end;
   }
 
   &__header {
@@ -84,7 +86,7 @@
 
   & &__header-button {
     &-rounded-button {
-      @include H8;
+      @include design-system.H8;
 
       padding: 8px;
       min-width: 75px;

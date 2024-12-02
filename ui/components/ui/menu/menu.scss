@@ -1,6 +1,8 @@
+@use "design-system";
+
 .menu {
   &__container {
-    @include H6;
+    @include design-system.H6;
 
     background: var(--color-background-default);
     box-shadow: var(--shadow-size-sm) var(--color-shadow-default);
@@ -37,7 +39,7 @@
 
   &:hover,
   &:active {
-    background: var(--color-background-alternative);
+    background: var(--color-background-default-hover);
   }
 
   &__icon {

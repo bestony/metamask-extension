@@ -1,7 +1,6 @@
 import React, { PureComponent } from 'react';
 import PropTypes from 'prop-types';
 import { Redirect } from 'react-router-dom';
-import Identicon from '../../../../components/ui/identicon';
 import Button from '../../../../components/ui/button/button.component';
 import TextField from '../../../../components/ui/text-field';
 import PageContainerFooter from '../../../../components/ui/page-container/page-container-footer';
@@ -9,6 +8,20 @@ import {
   isBurnAddress,
   isValidHexAddress,
 } from '../../../../../shared/modules/hexstring-utils';
+import {
+  AvatarAccount,
+  AvatarAccountSize,
+  Box,
+  Text,
+} from '../../../../components/component-library';
+
+import {
+  AlignItems,
+  BlockSize,
+  Display,
+  TextVariant,
+} from '../../../../helpers/constants/design-system';
+import { isDuplicateContact } from '../../../../components/app/contact-list/utils';
 
 export default class EditContact extends PureComponent {
   static contextTypes = {
@@ -16,6 +29,8 @@ export default class EditContact extends PureComponent {
   };
 
   static propTypes = {
+    addressBook: PropTypes.array,
+    internalAccounts: PropTypes.array,
     addToAddressBook: PropTypes.func,
     removeFromAddressBook: PropTypes.func,
     history: PropTypes.object,
@@ -36,7 +51,30 @@ export default class EditContact extends PureComponent {
     newName: this.props.name,
     newAddress: this.props.address,
     newMemo: this.props.memo,
-    error: '',
+    nameError: '',
+    addressError: '',
+  };
+
+  validateName = (newName) => {
+    if (newName === this.props.name) {
+      return true;
+    }
+
+    const { addressBook, internalAccounts } = this.props;
+
+    return !isDuplicateContact(addressBook, internalAccounts, newName);
+  };
+
+  handleNameChange = (e) => {
+    const newName = e.target.value;
+
+    const isValidName = this.validateName(newName);
+
+    this.setState({
+      nameError: isValidName ? null : this.context.t('nameAlreadyInUse'),
+    });
+
+    this.setState({ newName });
   };
 
   render() {
@@ -59,19 +97,43 @@ export default class EditContact extends PureComponent {
 
     return (
       <div className="settings-page__content-row address-book__edit-contact">
-        <div className="settings-page__header address-book__header--edit">
-          <Identicon address={address} diameter={60} />
-          <Button
-            type="link"
-            className="settings-page__address-book-button"
-            onClick={async () => {
-              await removeFromAddressBook(chainId, address);
-              history.push(listRoute);
-            }}
+        <Box
+          className="settings-page__header address-book__header--edit"
+          paddingLeft={6}
+          paddingRight={6}
+          width={BlockSize.Full}
+          alignItems={AlignItems.center}
+        >
+          <Box
+            display={Display.Flex}
+            alignItems={AlignItems.center}
+            style={{ overflow: 'hidden' }}
+            paddingRight={2}
           >
-            {t('deleteAccount')}
-          </Button>
-        </div>
+            <AvatarAccount size={AvatarAccountSize.Lg} address={address} />
+            <Text
+              className="address-book__header__name"
+              variant={TextVariant.bodyLgMedium}
+              marginInlineStart={4}
+              style={{ overflow: 'hidden' }}
+              ellipsis
+            >
+              {name || address}
+            </Text>
+          </Box>
+          <Box className="settings-page__address-book-button">
+            <Button
+              type="link"
+              onClick={async () => {
+                await removeFromAddressBook(chainId, address);
+                history.push(listRoute);
+              }}
+              style={{ display: 'contents' }}
+            >
+              {t('deleteContact')}
+            </Button>
+          </Box>
+        </Box>
         <div className="address-book__edit-contact__content">
           <div className="address-book__view-contact__group">
             <div className="address-book__view-contact__group__label">
@@ -82,9 +144,10 @@ export default class EditContact extends PureComponent {
               id="nickname"
               placeholder={this.context.t('addAlias')}
               value={this.state.newName}
-              onChange={(e) => this.setState({ newName: e.target.value })}
+              onChange={this.handleNameChange}
               fullWidth
               margin="dense"
+              error={this.state.nameError}
             />
           </div>
 
@@ -96,11 +159,11 @@ export default class EditContact extends PureComponent {
               type="text"
               id="address"
               value={this.state.newAddress}
-              error={this.state.error}
+              error={this.state.addressError}
               onChange={(e) => this.setState({ newAddress: e.target.value })}
               fullWidth
               multiline
-              rows={3}
+              rows={4}
               margin="dense"
               classes={{
                 inputMultiline:
@@ -153,7 +216,9 @@ export default class EditContact extends PureComponent {
                 );
                 history.push(listRoute);
               } else {
-                this.setState({ error: this.context.t('invalidAddress') });
+                this.setState({
+                  addressError: this.context.t('invalidAddress'),
+                });
               }
             } else {
               // update name
@@ -169,6 +234,13 @@ export default class EditContact extends PureComponent {
             history.push(`${viewRoute}/${address}`);
           }}
           submitText={this.context.t('save')}
+          disabled={Boolean(
+            (this.state.newName === name &&
+              this.state.newAddress === address &&
+              this.state.newMemo === memo) ||
+              !this.state.newName.trim() ||
+              this.state.nameError,
+          )}
         />
       </div>
     );

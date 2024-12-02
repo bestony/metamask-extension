@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
-import {
-  getTokenValueParam,
-  calcTokenAmount,
-} from '../helpers/utils/token-util';
+import { getTokenValueParam } from '../../shared/lib/metamask-controller-utils';
+import { calcTokenAmount } from '../../shared/lib/transactions-controller-utils';
 import { useTokenData } from './useTokenData';
 
 /**
@@ -45,7 +43,8 @@ export function useTokenDisplayValue(
       // and a token object has been provided
       token &&
       // and the provided token object contains a defined decimal value we need to calculate amount
-      token.decimals &&
+      token.decimals !== null &&
+      token.decimals !== undefined &&
       // and we are able to parse the token detail we to calculate amount from the raw data
       tokenValue,
   );

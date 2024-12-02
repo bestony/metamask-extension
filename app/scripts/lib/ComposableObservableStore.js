@@ -1,8 +1,8 @@
 import { ObservableStore } from '@metamask/obs-store';
-import { getPersistentState } from '@metamask/controllers';
+import { getPersistentState } from '@metamask/base-controller';
 
 /**
- * @typedef {import('@metamask/controllers').ControllerMessenger} ControllerMessenger
+ * @typedef {import('@metamask/base-controller').ControllerMessenger} ControllerMessenger
  */
 
 /**
@@ -13,7 +13,7 @@ export default class ComposableObservableStore extends ObservableStore {
   /**
    * Describes which stores are being composed. The key is the name of the
    * store, and the value is either an ObserableStore, or a controller that
-   * extends one of the two base controllers in the `@metamask/controllers`
+   * extends one of the two base controllers in the `@metamask/base-controller`
    * package.
    *
    * @type {Record<string, object>}
@@ -46,11 +46,12 @@ export default class ComposableObservableStore extends ObservableStore {
    * @param {Record<string, object>} config - Describes which stores are being
    *   composed. The key is the name of the store, and the value is either an
    *   ObserableStore, or a controller that extends one of the two base
-   *   controllers in the `@metamask/controllers` package.
+   *   controllers in the `@metamask/base-controller` package.
    */
   updateStructure(config) {
     this.config = config;
     this.removeAllListeners();
+    const initialState = {};
     for (const key of Object.keys(config)) {
       if (!config[key]) {
         throw new Error(`Undefined '${key}'`);
@@ -58,7 +59,7 @@ export default class ComposableObservableStore extends ObservableStore {
       const store = config[key];
       if (store.subscribe) {
         config[key].subscribe((state) => {
-          this.updateState({ [key]: state });
+          this.#onStateChange(key, state);
         });
       } else {
         this.controllerMessenger.subscribe(
@@ -68,11 +69,19 @@ export default class ComposableObservableStore extends ObservableStore {
             if (this.persist) {
               updatedState = getPersistentState(state, config[key].metadata);
             }
-            this.updateState({ [key]: updatedState });
+            this.#onStateChange(key, updatedState);
           },
         );
       }
+
+      const initialStoreState = store.state ?? store.getState?.();
+
+      initialState[key] =
+        this.persist && config[key].metadata
+          ? getPersistentState(initialStoreState, config[key].metadata)
+          : initialStoreState;
     }
+    this.updateState(initialState);
   }
 
   /**
@@ -94,5 +103,13 @@ export default class ComposableObservableStore extends ObservableStore {
       flatState = { ...flatState, ...state };
     }
     return flatState;
+  }
+
+  #onStateChange(controllerKey, newState) {
+    const oldState = this.getState()[controllerKey];
+
+    this.updateState({ [controllerKey]: newState });
+
+    this.emit('stateChange', { oldState, newState, controllerKey });
   }
 }

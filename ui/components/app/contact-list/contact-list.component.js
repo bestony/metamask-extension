@@ -2,10 +2,14 @@ import React, { PureComponent } from 'react';
 import PropTypes from 'prop-types';
 import { sortBy } from 'lodash';
 import Button from '../../ui/button';
+import { BannerAlert, BannerAlertSeverity } from '../../component-library';
 import RecipientGroup from './recipient-group/recipient-group.component';
+import { hasDuplicateContacts, buildDuplicateContactMap } from './utils';
 
 export default class ContactList extends PureComponent {
   static propTypes = {
+    addressBook: PropTypes.array,
+    internalAccounts: PropTypes.array,
     searchForContacts: PropTypes.func,
     searchForRecents: PropTypes.func,
     searchForMyAccounts: PropTypes.func,
@@ -22,6 +26,19 @@ export default class ContactList extends PureComponent {
     isShowingAllRecent: false,
   };
 
+  renderDuplicateContactWarning() {
+    const { t } = this.context;
+
+    return (
+      <div className="send__select-recipient-wrapper__list__duplicate-contact-banner">
+        <BannerAlert
+          severity={BannerAlertSeverity.Warning}
+          description={t('duplicateContactWarning')}
+        />
+      </div>
+    );
+  }
+
   renderRecents() {
     const { t } = this.context;
     const { isShowingAllRecent } = this.state;
@@ -31,12 +48,6 @@ export default class ContactList extends PureComponent {
 
     return (
       <div className="send__select-recipient-wrapper__recent-group-wrapper">
-        <RecipientGroup
-          label={t('recents')}
-          items={showLoadMore ? nonContacts.slice(0, 2) : nonContacts}
-          onSelect={this.props.selectRecipient}
-          selectedAddress={this.props.selectedAddress}
-        />
         {showLoadMore && (
           <Button
             type="link"
@@ -51,15 +62,40 @@ export default class ContactList extends PureComponent {
   }
 
   renderAddressBook() {
-    const unsortedContactsByLetter = this.props
-      .searchForContacts()
-      .reduce((obj, contact) => {
+    const {
+      addressBook,
+      internalAccounts,
+      searchForContacts,
+      selectRecipient,
+      selectedAddress,
+    } = this.props;
+
+    const duplicateContactMap = buildDuplicateContactMap(
+      addressBook,
+      internalAccounts,
+    );
+
+    const unsortedContactsByLetter = searchForContacts().reduce(
+      (obj, contact) => {
         const firstLetter = contact.name[0].toUpperCase();
+
+        const isDuplicate =
+          (duplicateContactMap.get(contact.name.trim().toLowerCase()) ?? [])
+            .length > 1;
+
         return {
           ...obj,
-          [firstLetter]: [...(obj[firstLetter] || []), contact],
+          [firstLetter]: [
+            ...(obj[firstLetter] || []),
+            {
+              ...contact,
+              isDuplicate,
+            },
+          ],
         };
-      }, {});
+      },
+      {},
+    );
 
     const letters = Object.keys(unsortedContactsByLetter).sort();
 
@@ -77,8 +113,8 @@ export default class ContactList extends PureComponent {
         key={`${letter}-contact-group`}
         label={letter}
         items={groupItems}
-        onSelect={this.props.selectRecipient}
-        selectedAddress={this.props.selectedAddress}
+        onSelect={selectRecipient}
+        selectedAddress={selectedAddress}
       />
     ));
   }
@@ -101,11 +137,16 @@ export default class ContactList extends PureComponent {
       searchForRecents,
       searchForContacts,
       searchForMyAccounts,
+      addressBook,
+      internalAccounts,
     } = this.props;
 
     return (
       <div className="send__select-recipient-wrapper__list">
         {children || null}
+        {hasDuplicateContacts(addressBook, internalAccounts)
+          ? this.renderDuplicateContactWarning()
+          : null}
         {searchForRecents ? this.renderRecents() : null}
         {searchForContacts ? this.renderAddressBook() : null}
         {searchForMyAccounts ? this.renderMyAccounts() : null}

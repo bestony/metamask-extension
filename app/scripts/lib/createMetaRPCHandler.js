@@ -1,14 +1,15 @@
-import { ethErrors, serializeError } from 'eth-rpc-errors';
+import { rpcErrors, serializeError } from '@metamask/rpc-errors';
+import { isStreamWritable } from './stream-utils';
 
 const createMetaRPCHandler = (api, outStream) => {
   return async (data) => {
-    if (outStream._writableState.ended) {
+    if (!isStreamWritable(outStream)) {
       return;
     }
     if (!api[data.method]) {
       outStream.write({
         jsonrpc: '2.0',
-        error: ethErrors.rpc.methodNotFound({
+        error: rpcErrors.methodNotFound({
           message: `${data.method} not found`,
         }),
         id: data.id,
@@ -24,7 +25,7 @@ const createMetaRPCHandler = (api, outStream) => {
       error = err;
     }
 
-    if (outStream._writableState.ended) {
+    if (!isStreamWritable(outStream)) {
       if (error) {
         console.error(error);
       }

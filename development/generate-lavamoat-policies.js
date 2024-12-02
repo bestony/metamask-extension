@@ -2,7 +2,9 @@
 const concurrently = require('concurrently');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
-const { BuildType } = require('./lib/build-type');
+const { loadBuildTypesConfig } = require('./lib/build-type');
+
+const buildTypesConfig = loadBuildTypesConfig();
 
 start().catch((error) => {
   console.error('Policy generation failed.', error);
@@ -11,7 +13,7 @@ start().catch((error) => {
 
 async function start() {
   const {
-    argv: { buildTypes, parallel },
+    argv: { buildTypes, parallel, devMode },
   } = yargs(hideBin(process.argv)).usage(
     '$0 [options]',
     'Generate the LavaMoat policy file for one more more build types.',
@@ -19,8 +21,8 @@ async function start() {
       yargsInstance
         .option('build-types', {
           alias: ['t'],
-          choices: Object.values(BuildType),
-          default: Object.values(BuildType),
+          choices: Object.keys(buildTypesConfig.buildTypes),
+          default: Object.keys(buildTypesConfig.buildTypes),
           demandOption: true,
           description: 'The build type(s) to generate policy files for.',
         })
@@ -31,13 +33,22 @@ async function start() {
           description: 'Whether to generate policies in parallel.',
           type: 'boolean',
         })
+        .option('devMode', {
+          alias: ['d'],
+          default: false,
+          demandOption: true,
+          description:
+            'Whether to run the process under lavamoat (devMode=false) or node (devMode=true)',
+          type: 'boolean',
+        })
         .strict(),
   );
 
-  await concurrently(
+  const buildCommand = devMode ? 'build:dev' : 'build';
+  const { result } = concurrently(
     (Array.isArray(buildTypes) ? buildTypes : [buildTypes]).map(
       (buildType) => ({
-        command: `yarn build scripts:dist --policy-only --build-type=${buildType}`,
+        command: `yarn ${buildCommand} scripts:dist --policy-only --lint-fence-files=false --build-type=${buildType}`,
         env: {
           WRITE_AUTO_POLICY: 1,
         },
@@ -49,6 +60,7 @@ async function start() {
       maxProcesses: parallel ? buildTypes.length : 1,
     },
   );
+  await result;
 
   console.log('Policy file(s) successfully generated!');
 }

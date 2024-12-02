@@ -1,8 +1,8 @@
-import { TRANSACTION_TYPES } from '../../../shared/constants/transaction';
-import { MAINNET_CHAIN_ID } from '../../../shared/constants/network';
+import { TransactionType } from '@metamask/transaction-controller';
+import { CHAIN_IDS } from '../../../shared/constants/network';
 import migration64 from './064';
 
-const SENT_ETHER = 'sentEther'; // the legacy transaction type being replaced in this migration with TRANSACTION_TYPES.SIMPLE_SEND
+const SENT_ETHER = 'sentEther'; // the legacy transaction type being replaced in this migration with TransactionType.simpleSend
 
 describe('migration #64', () => {
   it('should update the version metadata', async () => {
@@ -82,9 +82,9 @@ describe('migration #64', () => {
   it('should change action type of "sentEther" to "simpleSend" for any transactions and transaction history events in transactionsController.transactions', async () => {
     const OLD_TRANSACTION_STATE = {
       1462177651588364: {
-        type: TRANSACTION_TYPES.CANCEL,
+        type: TransactionType.cancel,
         id: 0,
-        chainId: MAINNET_CHAIN_ID,
+        chainId: CHAIN_IDS.MAINNET,
         txParams: {
           nonce: '0x0',
         },
@@ -100,7 +100,7 @@ describe('migration #64', () => {
       1: {
         type: SENT_ETHER,
         id: 1,
-        chainId: MAINNET_CHAIN_ID,
+        chainId: CHAIN_IDS.MAINNET,
         txParams: {
           nonce: '0x1',
         },
@@ -261,9 +261,9 @@ describe('migration #64', () => {
 
     const EXPECTED_TRANSACTION_STATE = {
       1462177651588364: {
-        type: TRANSACTION_TYPES.CANCEL,
+        type: TransactionType.cancel,
         id: 0,
-        chainId: MAINNET_CHAIN_ID,
+        chainId: CHAIN_IDS.MAINNET,
         txParams: {
           nonce: '0x0',
         },
@@ -277,9 +277,9 @@ describe('migration #64', () => {
         hash: '0x4d8543f12afd3795b94d723dcd0e20bfc3740e1af668e5e90a0c5ec49f36ba12',
       },
       1: {
-        type: TRANSACTION_TYPES.SIMPLE_SEND,
+        type: TransactionType.simpleSend,
         id: 1,
-        chainId: MAINNET_CHAIN_ID,
+        chainId: CHAIN_IDS.MAINNET,
         txParams: {
           nonce: '0x1',
         },
@@ -301,7 +301,7 @@ describe('migration #64', () => {
               gas: '0x31413',
               value: '0x0',
             },
-            type: TRANSACTION_TYPES.SIMPLE_SEND,
+            type: TransactionType.simpleSend,
           },
           [
             {
@@ -389,7 +389,7 @@ describe('migration #64', () => {
           },
           type: '0x2',
         },
-        type: TRANSACTION_TYPES.SIMPLE_SEND,
+        type: TransactionType.simpleSend,
         history: [
           {
             chainId: '0x4',
